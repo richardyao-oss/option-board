@@ -789,19 +789,19 @@ def render_html(
       linear-gradient(180deg, #f8fbff 0%, var(--paper) 34%, #edf3fb 100%); }}
     button, input {{ font: inherit; }}
     .sheet {{ max-width: none; margin: 0; padding: 0 28px 44px; }}
-    .mast {{ background: rgba(255,255,255,.88); border-bottom: 1px solid var(--hair); padding: 14px 28px 12px; margin: 0 -28px; position: sticky; top: 0; z-index: 100; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; box-shadow: 0 1px 10px rgba(27, 55, 92, .06); backdrop-filter: blur(14px); }}
+    .mast {{ background: rgba(255,255,255,.97); border-bottom: 1px solid var(--hair); padding: 14px 28px 12px; margin: 0 -28px; position: sticky; top: 0; z-index: 100; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; box-shadow: 0 1px 10px rgba(27, 55, 92, .06); }}
     .eyebrow {{ display: none; }}
     h1 {{ margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: 0; color: #0f1f38; font-weight: 850; }}
     h2 {{ margin: 0; font-size: 14px; line-height: 1.15; letter-spacing: 0; color: var(--ink); }}
     .meta {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; margin: 0; color: var(--muted); font-size: 12px; }}
     .meta span {{ white-space: nowrap; }}
-    .group-switch {{ display: flex; flex-wrap: wrap; gap: 0; background: rgba(255,255,255,.82); border-bottom: 1px solid #dfe7f2; margin: 0 -28px; padding: 0 28px; position: sticky; top: 52px; z-index: 80; backdrop-filter: blur(14px); }}
+    .group-switch {{ display: flex; flex-wrap: wrap; gap: 0; background: rgba(255,255,255,.96); border-bottom: 1px solid #dfe7f2; margin: 0 -28px; padding: 0 28px; position: sticky; top: 52px; z-index: 80; }}
     .group-button {{ border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); min-width: 0; padding: 8px 16px; cursor: pointer; text-align: left; font-size: 12px; transition: color .15s, border-color .15s; }}
     .group-button:hover {{ color: var(--text); }}
     .group-button span {{ color: var(--faint); font-size: 11px; margin-left: 4px; }}
     .group-button.active {{ color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }}
     .group-button.active span {{ color: var(--blue); }}
-    .toolbar {{ display: flex; align-items: center; gap: 12px; position: static; background: rgba(248,251,255,.92); padding: 12px 28px; margin: 0 -28px; border-bottom: 1px solid #dfe7f2; backdrop-filter: blur(12px); }}
+    .toolbar {{ display: flex; align-items: center; gap: 12px; position: static; background: rgba(248,251,255,.98); padding: 12px 28px; margin: 0 -28px; border-bottom: 1px solid #dfe7f2; }}
     .search {{ width: 176px; border: 1px solid #d1dceb; border-radius: 7px; background: rgba(255,255,255,.92); padding: 7px 11px; outline: none; color: var(--text); font-size: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }}
     .search:focus {{ border-color: var(--blue); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }}
     .search:focus, .seg button:focus-visible, .group-button:focus-visible {{ outline: none; }}
@@ -813,7 +813,7 @@ def render_html(
     .seg[data-sorter] button.active {{ background: #173563; border-color: #173563; }}
     .count {{ text-align: right; color: var(--faint); font-size: 12px; white-space: nowrap; }}
     .board {{ margin-top: 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 26px; overflow: visible; }}
-    .scan-row {{ position: relative; display: flex; flex-direction: column; border: 1px solid #dbe5f1; border-radius: 12px; background: rgba(255,255,255,.90); min-height: 520px; padding: 22px 22px 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(29, 55, 91, .08), 0 1px 0 rgba(255,255,255,.9) inset; }}
+    .scan-row {{ position: relative; display: flex; flex-direction: column; border: 1px solid #dbe5f1; border-radius: 12px; background: rgba(255,255,255,.90); min-height: 520px; padding: 22px 22px 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(29, 55, 91, .08), 0 1px 0 rgba(255,255,255,.9) inset; content-visibility: auto; contain-intrinsic-size: 620px; }}
     .score-line {{ display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0 20px; min-height: 32px; }}
     .quote-metrics {{ display: flex; align-items: center; gap: 10px; color: #5f6f86; font-variant-numeric: tabular-nums; }}
     .score-badge, .quote-metrics span {{ display: grid; grid-template-columns: auto auto; gap: 4px; align-items: baseline; padding: 4px 7px; border: 1px solid #e5edf7; border-radius: 7px; background: rgba(255,255,255,.72); font-variant-numeric: tabular-nums; }}
