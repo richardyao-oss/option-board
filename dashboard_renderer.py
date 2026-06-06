@@ -442,7 +442,7 @@ def daily_symbol_infos(
             }
         )
 
-    infos.sort(key=lambda item: (item["score"], item["total"], item["symbol"]), reverse=True)
+    infos.sort(key=lambda item: (item["total"], item["score"], item["symbol"]), reverse=True)
     return infos
 
 
@@ -755,8 +755,6 @@ def render_html(
     status_type = str(snapshot_status.get("snapshot_type") or "complete").lower()
     status_label = "盘中快照" if status_type == "intraday" else "完整复盘"
     status_time = str(snapshot_status.get("as_of_et") or snapshot_status.get("snapshot_time") or "本地已存数据")
-    status_note = "最新日期为盘中快照；完整复盘会覆盖同一天数据。" if status_type == "intraday" else "最新日期为完整复盘数据。"
-
     doc = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -789,19 +787,20 @@ def render_html(
       linear-gradient(180deg, #f8fbff 0%, var(--paper) 34%, #edf3fb 100%); }}
     button, input {{ font: inherit; }}
     .sheet {{ max-width: none; margin: 0; padding: 0 28px 44px; }}
-    .mast {{ background: rgba(255,255,255,.97); border-bottom: 1px solid var(--hair); padding: 14px 28px 12px; margin: 0 -28px; position: sticky; top: 0; z-index: 100; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; box-shadow: 0 1px 10px rgba(27, 55, 92, .06); }}
+    .top-stack {{ position: sticky; top: 0; z-index: 120; margin: 0 -28px; background: rgba(255,255,255,.98); border-bottom: 1px solid #dfe7f2; box-shadow: 0 1px 10px rgba(27, 55, 92, .06); }}
+    .mast {{ background: transparent; border-bottom: 1px solid var(--hair); padding: 14px 28px 12px; margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; box-shadow: none; }}
     .eyebrow {{ display: none; }}
     h1 {{ margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: 0; color: #0f1f38; font-weight: 850; }}
     h2 {{ margin: 0; font-size: 14px; line-height: 1.15; letter-spacing: 0; color: var(--ink); }}
     .meta {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; margin: 0; color: var(--muted); font-size: 12px; }}
     .meta span {{ white-space: nowrap; }}
-    .group-switch {{ display: flex; flex-wrap: wrap; gap: 0; background: rgba(255,255,255,.96); border-bottom: 1px solid #dfe7f2; margin: 0 -28px; padding: 0 28px; position: sticky; top: 52px; z-index: 80; }}
+    .group-switch {{ display: flex; flex-wrap: wrap; gap: 0; background: transparent; border-bottom: 1px solid #dfe7f2; margin: 0; padding: 0 28px; }}
     .group-button {{ border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); min-width: 0; padding: 8px 16px; cursor: pointer; text-align: left; font-size: 12px; transition: color .15s, border-color .15s; }}
     .group-button:hover {{ color: var(--text); }}
     .group-button span {{ color: var(--faint); font-size: 11px; margin-left: 4px; }}
     .group-button.active {{ color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }}
     .group-button.active span {{ color: var(--blue); }}
-    .toolbar {{ display: flex; align-items: center; gap: 12px; position: static; background: rgba(248,251,255,.98); padding: 12px 28px; margin: 0 -28px; border-bottom: 1px solid #dfe7f2; }}
+    .toolbar {{ display: flex; align-items: center; gap: 12px; position: static; background: transparent; padding: 12px 28px; margin: 0; border-bottom: 0; }}
     .search {{ width: 176px; border: 1px solid #d1dceb; border-radius: 7px; background: rgba(255,255,255,.92); padding: 7px 11px; outline: none; color: var(--text); font-size: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }}
     .search:focus {{ border-color: var(--blue); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }}
     .search:focus, .seg button:focus-visible, .group-button:focus-visible {{ outline: none; }}
@@ -899,7 +898,7 @@ def render_html(
     ::-webkit-scrollbar-thumb:hover {{ background: var(--hair-strong); }}
     @media (max-width: 980px) {{
       .sheet {{ padding: 14px; }}
-      .mast, .group-switch, .toolbar {{ position: static; margin-left: 0; margin-right: 0; }}
+      .top-stack {{ position: static; margin-left: 0; margin-right: 0; }}
       .mast {{ display: block; }}
       .meta {{ justify-content: flex-start; margin-top: 8px; }}
       .toolbar {{ flex-wrap: wrap; }}
@@ -918,21 +917,20 @@ def render_html(
 </head>
 <body>
   <main class="sheet">
-    <header class="mast">
-      <p class="eyebrow">Options Anomaly Sheet</p>
-      <h1>期权异动扫描单</h1>
-      <p class="meta">
-        <span>数据日期：{html.escape(snapshot_date)}</span>
-        <span>数据状态：{html.escape(status_label)}</span>
-        <span>观察窗口：{html.escape(first_day)} 至 {html.escape(last_day)}</span>
-        <span>更新时间：{html.escape(status_time)}</span>
-      </p>
-    </header>
+    <section class="top-stack">
+      <header class="mast">
+        <p class="eyebrow">Options Anomaly Sheet</p>
+        <h1>期权异动扫描单</h1>
+        <p class="meta">
+          <span>数据日期：{html.escape(snapshot_date)}</span>
+          <span>数据状态：{html.escape(status_label)}</span>
+          <span>观察窗口：{html.escape(first_day)} 至 {html.escape(last_day)}</span>
+          <span>更新时间：{html.escape(status_time)}</span>
+        </p>
+      </header>
 
-    {group_switch}
+      {group_switch}
 
-    <section class="report-panel" id="preopenPanel" data-panel="preopen">
-      <p class="meta"><span>{html.escape(status_note)}</span><span>展示当前自选分组全部已扫描标的。</span><span>展示标的：{daily_summary["count"]}</span><span>已评分：{daily_summary["scored"]}</span><span>总成交量：{daily_summary["volume"]:,}</span></p>
       <section class="toolbar" aria-label="daily filters">
         <input class="search" data-search="preopen" type="search" placeholder="搜索股票代码" autocomplete="off">
         <div class="seg" data-direction-filter="preopen">
@@ -941,12 +939,15 @@ def render_html(
           <button data-filter="PUT" type="button">PUT</button>
         </div>
         <div class="seg" data-sorter="preopen">
-          <button class="active" data-sort="score" type="button">分数</button>
-          <button data-sort="total" type="button">成交</button>
+          <button data-sort="score" type="button">分数</button>
+          <button class="active" data-sort="total" type="button">成交</button>
           <button data-sort="pcr" type="button">P/C</button>
         </div>
         <div class="count"><span data-visible-count="preopen">{daily_summary["count"]}</span> / <span data-total-count="preopen">{daily_summary["count"]}</span></div>
       </section>
+    </section>
+
+    <section class="report-panel" id="preopenPanel" data-panel="preopen">
       <section class="board" data-board="preopen">{daily_rows}</section>
     </section>
   </main>
@@ -958,7 +959,7 @@ def render_html(
       localStorage.removeItem('option-report-group');
     }}
     const states = {{
-      preopen: {{ direction: 'ALL', sort: 'score' }}
+      preopen: {{ direction: 'ALL', sort: 'total' }}
     }};
 
     function rowsFor(tab) {{
