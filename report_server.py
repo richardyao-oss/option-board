@@ -20,7 +20,7 @@ REPORT_PATH = ROOT / "reports" / "options_anomaly_report.html"
 HOST = "127.0.0.1"
 PORT = 8765
 LOG_PATH = ROOT / "reports" / "report_server.log"
-SERVER_VERSION = "2026-06-06-git-sync"
+SERVER_VERSION = "2026-06-06-report-alias"
 
 UPDATE_CONFIG = {
     "intraday": {
@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path in ("/", "/index.html"):
+        if parsed.path in ("/", "/index.html", "/report", "/report.html"):
             if not REPORT_PATH.exists():
                 payload = json_bytes({"ok": False, "message": f"Report does not exist: {REPORT_PATH}"})
                 self.send_data(404, payload, "application/json; charset=utf-8")

@@ -17,7 +17,7 @@ PORT = 8765
 URL = f"http://{HOST}:{PORT}/"
 PID_PATH = ROOT / "reports" / "report_server.pid"
 LOG_PATH = ROOT / "reports" / "report_server_process.log"
-EXPECTED_SERVER_VERSION = "2026-06-06-git-sync"
+EXPECTED_SERVER_VERSION = "2026-06-06-report-alias"
 
 
 def port_is_open() -> bool:
