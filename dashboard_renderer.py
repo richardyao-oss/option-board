@@ -353,7 +353,13 @@ def matched_unusual_rows(
             continue
         if contract_identity(row) in top_identities:
             matched.append(row)
-    matched.sort(key=lambda row: (safe_float(row.get("turnover")), safe_int(row.get("volume"))), reverse=True)
+    matched.sort(
+        key=lambda row: (
+            str(row.get("expiry") or option_expiry(str(row.get("option_code", ""))) or "9999-12-31"),
+            -safe_float(row.get("strike")),
+            -safe_float(row.get("turnover")),
+        )
+    )
     return matched[:limit]
 
 
