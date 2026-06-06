@@ -14,6 +14,7 @@ Use these entry points:
 check_environment.cmd
 setup_venv.cmd
 START_HERE_期权监控.cmd
+stop_report_console.cmd
 ```
 
 Do not use `pip install --target .python-packages`. `setup_deps.cmd` is now a legacy wrapper that calls `setup_venv.cmd`.
@@ -32,6 +33,16 @@ To open the report console manually:
 
 ```cmd
 START_HERE_期权监控.cmd
+```
+
+`START_HERE_期权监控.cmd` writes `reports\start_here.log` and pauses on failure.
+It opens the browser only after Git pull, local server startup, and
+`http://127.0.0.1:8765/api/info` all succeed.
+
+To stop the local report console:
+
+```cmd
+stop_report_console.cmd
 ```
 
 The browser should use:
