@@ -1,12 +1,16 @@
 $ErrorActionPreference = "Stop"
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Resolve-Path (Join-Path $ScriptDir "..\..")
 $ConfigPath = Join-Path $Root "sync_config.json"
 $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$SyncDir = [string]$Config.sync_dir
+$SyncDir = [string]$Config.legacy_google_drive_sync_dir
+if (-not $SyncDir) {
+    $SyncDir = [string]$Config.sync_dir
+}
 
 if (-not $SyncDir) {
-    throw "sync_config.json does not contain sync_dir."
+    throw "sync_config.json does not contain legacy_google_drive_sync_dir."
 }
 
 function Resolve-SyncDir {

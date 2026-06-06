@@ -109,11 +109,29 @@ backup_before_*
 Google Drive sync scripts are legacy fallback tools only:
 
 ```cmd
-initialize_google_drive_sync.cmd
-sync_latest_snapshot_to_google_drive.cmd
+legacy\google_drive\initialize_google_drive_sync.cmd
+legacy\google_drive\sync_latest_snapshot_to_google_drive.cmd
 ```
 
 Do not use them for routine sync. Routine cross-device sync should use Git commit/push and pull.
+
+`sync_settings.py` now defaults to `git`. `OPTION_MONITOR_SYNC_DIR` is intentionally ignored by the daily workflow; Google Drive tools must explicitly read `legacy_google_drive_sync_dir` from `sync_config.json`.
+
+## Archived Tools
+
+Historical backfill, old option-flow prototypes, NOW/FUTU case validation, and Google Drive recovery utilities were moved under:
+
+```text
+legacy\
+```
+
+The one-off return-correlation research helper remains useful and lives under:
+
+```text
+tools\research\analyze_option_return_correlation.py
+```
+
+Do not use archived tools as daily entry points.
 
 ## Start On Login
 
@@ -154,7 +172,7 @@ Treat this dashboard as a semi-production workflow. It uses real Futu data, limi
 - If Richard says stop, stop the running work first.
 - Before writing option data or regenerating the dashboard, create a local `backup_before_*` backup.
 - Use the Git transaction wrapper for routine updates. Confirm that Git push completed after a successful local update.
-- Do not use Google Drive sync scripts for routine sync. They are legacy fallback tools only.
+- Do not use Google Drive sync scripts for routine sync. They are archived legacy fallback tools only.
 
 Codex permissions are intentionally limited:
 
@@ -168,3 +186,6 @@ Project-specific data notes:
 - Single-symbol refreshes are temporary inspection views. A full complete review can replace same-date single-symbol temporary data.
 - Git worktree must be clean before synced updates. Do not auto-merge option data conflicts.
 - VIX is special: Futu code is `US..VIX`, option screen category is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
+- Top contracts use the mixed logic: turnover top 5 plus volume top 10 after removing duplicates until 10 rows.
+- P/C remains volume-based. Top-contract tables show both volume and turnover.
+- `option_screen_snapshot_status.json` records the active collection scope, including page counts, P/C basis, Top10 basis, and unusual time range.

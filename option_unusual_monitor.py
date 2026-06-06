@@ -101,16 +101,27 @@ def split_records(content: str) -> list[str]:
     return records
 
 
-def parse_unusual_content(content: str, snapshot_date: str, underlying: str) -> list[dict[str, Any]]:
+def parse_unusual_content_with_stats(
+    content: str,
+    snapshot_date: str,
+    underlying: str,
+    failed_example_limit: int = 3,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for record in split_records(content):
+    records = split_records(content)
+    failed_examples: list[str] = []
+    for record in records:
         match = UNUSUAL_PATTERN.search(record)
         if not match:
+            if len(failed_examples) < failed_example_limit:
+                failed_examples.append(record)
             continue
         expiry = normalize_expiry(match.group("expiry"))
         option_type = normalize_option_type(match.group("option_kind"))
         direction = normalize_direction(match.group("side"))
         if option_type not in {"CALL", "PUT"} or direction not in {"BUY", "SELL"}:
+            if len(failed_examples) < failed_example_limit:
+                failed_examples.append(record)
             continue
         rows.append(
             {
@@ -127,6 +138,17 @@ def parse_unusual_content(content: str, snapshot_date: str, underlying: str) -> 
                 "raw_text": record,
             }
         )
+    stats = {
+        "raw_records": len(records),
+        "parsed_records": len(rows),
+        "unparsed_records": max(0, len(records) - len(rows)),
+        "failed_examples": failed_examples,
+    }
+    return rows, stats
+
+
+def parse_unusual_content(content: str, snapshot_date: str, underlying: str) -> list[dict[str, Any]]:
+    rows, _stats = parse_unusual_content_with_stats(content, snapshot_date, underlying)
     return rows
 
 
@@ -137,18 +159,26 @@ def create_quote_context():
     return OpenQuoteContext(host="127.0.0.1", port=11111)
 
 
-def collect_unusual_rows(
+def collect_unusual_rows_with_stats(
     watchlist: list[str],
     snapshot_date: str,
     request_pause: float,
     time_range: int = 1,
     language_id: int = 0,
-) -> tuple[list[dict[str, Any]], list[str]]:
+) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
     configure_runtime()
     from futu import RET_OK
 
     rows: list[dict[str, Any]] = []
     warnings: list[str] = []
+    stats: dict[str, Any] = {
+        "symbols_requested": len(watchlist),
+        "symbols_failed": 0,
+        "raw_records": 0,
+        "parsed_records": 0,
+        "unparsed_records": 0,
+        "failed_examples": [],
+    }
     ctx = create_quote_context()
     try:
         for index, underlying in enumerate(watchlist):
@@ -163,17 +193,48 @@ def collect_unusual_rows(
                 )
             except Exception as exc:
                 warnings.append(f"{underlying}: get_derivative_unusual raised {type(exc).__name__}: {exc}")
+                stats["symbols_failed"] += 1
                 continue
             if ret != RET_OK:
                 warnings.append(f"{underlying}: get_derivative_unusual failed: {data}")
+                stats["symbols_failed"] += 1
                 continue
             if not isinstance(data, dict):
                 warnings.append(f"{underlying}: unexpected derivative unusual payload type: {type(data).__name__}")
+                stats["symbols_failed"] += 1
                 continue
             content = str(data.get("content") or "")
-            rows.extend(parse_unusual_content(content, snapshot_date, underlying))
+            parsed_rows, parse_stats = parse_unusual_content_with_stats(content, snapshot_date, underlying)
+            rows.extend(parsed_rows)
+            stats["raw_records"] += int(parse_stats["raw_records"])
+            stats["parsed_records"] += int(parse_stats["parsed_records"])
+            stats["unparsed_records"] += int(parse_stats["unparsed_records"])
+            for example in parse_stats["failed_examples"]:
+                if len(stats["failed_examples"]) < 10:
+                    stats["failed_examples"].append({"underlying": underlying, "raw_text": example})
+            if parse_stats["unparsed_records"]:
+                warnings.append(
+                    f"{underlying}: {parse_stats['unparsed_records']} option unusual records were not parsed"
+                )
     finally:
         ctx.close()
+    return rows, warnings, stats
+
+
+def collect_unusual_rows(
+    watchlist: list[str],
+    snapshot_date: str,
+    request_pause: float,
+    time_range: int = 1,
+    language_id: int = 0,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    rows, warnings, _stats = collect_unusual_rows_with_stats(
+        watchlist=watchlist,
+        snapshot_date=snapshot_date,
+        request_pause=request_pause,
+        time_range=time_range,
+        language_id=language_id,
+    )
     return rows, warnings
 
 
@@ -199,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    rows, warnings = collect_unusual_rows(
+    rows, warnings, stats = collect_unusual_rows_with_stats(
         watchlist=[str(symbol).upper() for symbol in args.symbols],
         snapshot_date=args.snapshot_date,
         request_pause=args.request_pause,
@@ -208,9 +269,15 @@ def main() -> int:
     if args.output:
         write_rows(args.output, rows)
     if args.json:
-        print(json.dumps({"rows": rows, "warnings": warnings}, ensure_ascii=False, indent=2))
+        print(json.dumps({"rows": rows, "warnings": warnings, "stats": stats}, ensure_ascii=False, indent=2))
     else:
         print(f"Collected option unusual rows: {len(rows)}")
+        print(
+            "Parse stats: "
+            f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
+            f"{stats['unparsed_records']} unparsed, "
+            f"{stats['symbols_failed']} symbols failed"
+        )
         for warning in warnings:
             print(f"[warn] {warning}", file=sys.stderr)
     return 0

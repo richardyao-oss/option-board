@@ -13,7 +13,7 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - Any user-facing `.cmd`/PowerShell script that Richard is asked to double-click must pause on failure and show both the log path and the error text before exiting. Do not provide scripts that fail and immediately close the window.
 - When Codex runs updates from this project, explicitly write to the local project `data` and `reports` paths.
 - After a successful local data/dashboard update, confirm that Git push completed. Do not ask Richard to run Google Drive sync for routine updates.
-- Do not use `initialize_google_drive_sync.cmd` or `sync_latest_snapshot_to_google_drive.cmd` for routine sync. They are legacy Google Drive tools only.
+- Do not use `legacy/google_drive/initialize_google_drive_sync.cmd` or `legacy/google_drive/sync_latest_snapshot_to_google_drive.cmd` for routine sync. They are legacy Google Drive tools only.
 
 ## Permissions And Skills
 
@@ -30,6 +30,7 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - VIX is special: Futu code is `US..VIX`, option screen category is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
 - Top contracts should preserve the current mixed logic: turnover top 5 plus volume top 10 after removing duplicates until 10 rows.
 - P/C remains volume-based. Top-contract tables should show both volume and turnover.
+- `option_screen_snapshot_status.json` should keep non-destructive collection metadata: screen sort/page counts, P/C basis, Top10 basis, and unusual time range.
 
 ## Frontend Design
 

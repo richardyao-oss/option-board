@@ -145,13 +145,16 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def validate_outputs(expected_mode: str) -> tuple[str, str, int, int]:
+def validate_outputs(expected_mode: str) -> tuple[str, str, int, int, int]:
     status_path = ROOT / "data" / "option_screen_snapshot_status.json"
     report_path = ROOT / "reports" / "options_anomaly_report.html"
+    unusual_path = ROOT / "data" / "option_unusual_snapshot.csv"
     if not status_path.exists():
         raise RuntimeError("Missing option_screen_snapshot_status.json after update.")
     if not report_path.exists():
         raise RuntimeError("Missing options_anomaly_report.html after update.")
+    if not unusual_path.exists():
+        raise RuntimeError("Missing option_unusual_snapshot.csv after update.")
 
     status = json.loads(status_path.read_text(encoding="utf-8-sig"))
     snapshot_date = str(status.get("snapshot_date") or status.get("trade_date") or "")
@@ -164,6 +167,7 @@ def validate_outputs(expected_mode: str) -> tuple[str, str, int, int]:
 
     agg_rows = [row for row in read_csv(ROOT / "data" / "option_screen_underlying_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
     contract_rows = [row for row in read_csv(ROOT / "data" / "option_screen_contract_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
+    unusual_rows = [row for row in read_csv(unusual_path) if row.get("snapshot_date") == snapshot_date]
     if not agg_rows:
         raise RuntimeError(f"No aggregate rows for {snapshot_date}.")
     if not contract_rows:
@@ -172,7 +176,7 @@ def validate_outputs(expected_mode: str) -> tuple[str, str, int, int]:
     html_text = report_path.read_text(encoding="utf-8", errors="ignore")
     if snapshot_date not in html_text:
         raise RuntimeError(f"Report HTML does not contain snapshot date {snapshot_date}.")
-    return snapshot_date, snapshot_type, len(agg_rows), len(contract_rows)
+    return snapshot_date, snapshot_type, len(agg_rows), len(contract_rows), len(unusual_rows)
 
 
 def commit_and_push(snapshot_date: str, snapshot_type: str) -> bool:
@@ -218,10 +222,11 @@ def main() -> int:
     if proc.returncode != 0:
         raise RuntimeError(f"daily_option_report.py failed with exit code {proc.returncode}.")
 
-    snapshot_date, snapshot_type, agg_count, contract_count = validate_outputs(args.mode)
+    snapshot_date, snapshot_type, agg_count, contract_count, unusual_count = validate_outputs(args.mode)
     print(
         f"Validated {snapshot_date} {snapshot_type}: "
-        f"{agg_count} symbols, {contract_count} contracts."
+        f"{agg_count} symbols, {contract_count} contracts, "
+        f"{unusual_count} unusual rows."
     )
     committed = commit_and_push(snapshot_date, snapshot_type)
     print("Git push completed." if committed else "Git already up to date.")

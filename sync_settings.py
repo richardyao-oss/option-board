@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -30,16 +29,10 @@ def read_config() -> dict[str, Any]:
 
 
 def sync_mode() -> str:
-    if _clean_path(os.getenv("OPTION_MONITOR_SYNC_DIR")) is not None:
-        return "google_drive"
-    return str(read_config().get("mode") or "google_drive").strip().lower()
+    return str(read_config().get("mode") or "git").strip().lower()
 
 
 def configured_sync_dir() -> Path | None:
-    env_path = _clean_path(os.getenv("OPTION_MONITOR_SYNC_DIR"))
-    if env_path is not None:
-        return env_path
-
     payload = read_config()
     if str(payload.get("mode") or "").strip().lower() == "git":
         return None

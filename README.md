@@ -1,59 +1,67 @@
-# Option Flow Monitor
+# Options Anomaly Dashboard
 
-一个基于 Futu OpenAPI 的期权日成交量异常监控原型。默认股票池：
+这是一个基于 Futu OpenAPI 的期权异动看板。它每天沉淀本地期权筛选器快照，并生成 `reports/options_anomaly_report.html`，用于观察标的在最近交易日里的 Call/Put 方向、成交量放大、P/C 变化、混合 Top10 合约和匹配到的期权异动记录。
 
-- `US.NOW`
-- `US.FUTU`
-- `US.DELL`
-- `US.QCOM`
+## 日常入口
 
-安全版本使用 `get_option_screen` 的当日期权成交量快照，聚合到正股维度，分别统计 Call / Put 成交量和 Put/Call 成交量比。它不调用历史 K 线接口。
-
-## 使用方式
-
-先确保 OpenD 已运行，并且本机 `futu-api` 可以连接到默认地址 `127.0.0.1:11111`。
-
-如果第一次运行提示缺少 `pandas` 或 `futu-api`，先运行：
+先打开并登录 Futu OpenD，然后使用：
 
 ```cmd
-setup_deps.cmd
+START_HERE_期权监控.cmd
 ```
 
-然后运行安全快照监控：
+浏览器页面：
+
+```text
+http://127.0.0.1:8765/
+```
+
+日常刷新必须走 Git 事务包装器：
 
 ```cmd
-run_safe_snapshot.cmd
+run_daily_report.cmd
+run_intraday_report.cmd
 ```
 
-或手动运行：
+包装器会自动执行：检查 Git 状态、拉取远端、检查 OpenD、创建本地备份、刷新数据、校验输出、提交并推送到 Git。
 
-```powershell
-".venv-futu\Scripts\python.exe" ".\option_screen_monitor.py" --pages 5 --page-count 200
+## 当前核心口径
+
+- `total_volume` 和 P/C 来自期权筛选器结果，不代表全市场全部期权成交。
+- P/C 保持成交量口径。
+- Top10 合约使用混合逻辑：成交额 Top5 + 成交量 Top10 去重后补足到 10 条。
+- 异动匹配只展示能与混合 Top10 按合约代码或到期/类型/行权价匹配的主动买入/主动卖出记录。
+- `option_screen_snapshot_status.json` 记录本次快照的采集口径 metadata。
+
+## 重要文件
+
+- `daily_option_report.py`: 主采集与报告生成入口。
+- `dashboard_renderer.py`: HTML 看板渲染。
+- `option_screen_monitor.py`: Futu 期权筛选器采集与聚合。
+- `option_unusual_monitor.py`: 衍生品异动文本解析。
+- `dashboard_analysis.py`: 只读本地 CSV 的横向分析工具，不调用 Futu。
+- `git_sync_update.py`: Git 同步刷新事务。
+- `data/`: 最新核心数据快照。
+- `reports/options_anomaly_report.html`: 最新看板 HTML。
+
+## 本地分析
+
+快速看当前数据里的方向占比增强、成交量放大、P/C 跳变和集中大单：
+
+```cmd
+.venv-futu\Scripts\python.exe dashboard_analysis.py --top 20
 ```
 
-输出文件：
+该工具只读本地文件，不消耗 Futu 行情额度。
 
-- `data/option_screen_contract_snapshot.csv`
-- `data/option_screen_underlying_snapshot.csv`
+## 测试
 
-旧的历史 K 线回补脚本仍在，但默认不传 `--max-kline-requests` 会拒绝运行，避免误耗历史 K 线额度。
+```cmd
+.venv-futu\Scripts\python.exe -m unittest discover -s tests
+```
 
-## 输出文件
+测试只使用本地 fixture 和已有 `data/` 文件，不调用 Futu。
 
-- `data/option_contract_daily.csv`: 单个期权合约的日成交量明细
-- `data/underlying_option_daily.csv`: 聚合到正股维度的 Call / Put 日成交量
-- `data/option_flow_signals.csv`: 异常方向、异常分、放量倍数和是否触发 alert
+## Legacy
 
-## 第一版 Alert 规则
-
-Call 异常：
-
-- 总期权成交量大于过去 15 个样本日均值的 2 倍
-- Call 占全部期权成交量至少 65%
-- Call 成交量大于过去 15 个样本日均值的 3 倍
-
-Put 异常同理。
-
-## 注意
-
-历史回补依赖 Futu 当前还能否返回过去到期日的期权链和合约日 K。若历史链不完整，工具仍然适合每天收盘后运行，把数据沉淀到本地，之后用自己的历史库做稳定监控。
+历史回测、Google Drive 同步和早期验证脚本已归档到 `legacy/`。它们保留用于追溯，不作为日常入口。常规跨设备同步只使用 Git。

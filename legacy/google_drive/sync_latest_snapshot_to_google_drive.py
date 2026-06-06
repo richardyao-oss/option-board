@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import shutil
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import dashboard_renderer
 import daily_option_report as dor
+import option_unusual_monitor as oum
 import option_screen_monitor as osm
 import report_groups as rg
 import sync_settings
@@ -87,6 +93,12 @@ def main() -> int:
             osm.CONTRACT_COLUMNS,
             sync_snapshot_date,
         ),
+        "unusual": merge_snapshot_csv(
+            local_data / dor.UNUSUAL_SNAPSHOT_FILE,
+            shared_data / dor.UNUSUAL_SNAPSHOT_FILE,
+            oum.UNUSUAL_COLUMNS,
+            sync_snapshot_date,
+        ),
     }
 
     shutil.copy2(status_path, shared_data / dor.SNAPSHOT_STATUS_FILE)
@@ -98,6 +110,7 @@ def main() -> int:
     signals = dor.read_csv(shared_data / "daily_option_signals.csv")
     contracts = dor.read_csv(shared_data / "option_screen_contract_snapshot.csv")
     volume_contracts = dor.read_csv(shared_data / dor.VOLUME_CONTRACT_SNAPSHOT_FILE)
+    unusual_rows = dor.read_csv(shared_data / dor.UNUSUAL_SNAPSHOT_FILE)
     quote_snapshot = dor.read_quote_snapshot(shared_data / "current_quote_snapshot.json")
     quote_map = quote_snapshot.get("quotes", {}) if isinstance(quote_snapshot.get("quotes", {}), dict) else {}
     latest_symbols = sorted(
@@ -117,6 +130,7 @@ def main() -> int:
         latest_snapshot_date,
         dor.trailing_weekdays(latest_snapshot_date, 7),
         volume_contract_rows=volume_contracts,
+        option_unusual_rows=unusual_rows,
         report_groups=report_groups,
         quote_map=quote_map,
         snapshot_status=status,

@@ -4,5 +4,18 @@
   "trade_date": "2026-06-05",
   "snapshot_date": "2026-06-05",
   "as_of_et": "2026-06-06 09:04:32 ET",
-  "as_of_bjt": "2026-06-06 21:04:32 BJT"
+  "as_of_bjt": "2026-06-06 21:04:32 BJT",
+  "collection_scope": {
+    "option_screen_turnover_sort": "turnover",
+    "option_screen_turnover_pages": 1,
+    "option_screen_turnover_page_count": 200,
+    "option_screen_volume_sort": "volume",
+    "option_screen_volume_pages": 1,
+    "option_screen_volume_page_count": 10,
+    "aggregate_volume_basis": "turnover_screen_rows",
+    "pcr_basis": "volume_from_turnover_screen_rows",
+    "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
+    "option_unusual_source": "get_derivative_unusual(option_unusual)",
+    "option_unusual_time_range_days": 1
+  }
 }
