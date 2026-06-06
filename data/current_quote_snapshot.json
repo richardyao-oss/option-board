@@ -1,7 +1,7 @@
 {
-  "snapshot_time": "2026-06-06 11:49:08",
-  "as_of_bjt": "2026-06-06 11:49:08 BJT",
-  "as_of_et": "2026-06-05 23:49:08 ET",
+  "snapshot_time": "2026-06-06 21:04:32",
+  "as_of_bjt": "2026-06-06 21:04:32 BJT",
+  "as_of_et": "2026-06-06 09:04:32 ET",
   "source": "get_market_snapshot",
   "quotes": {
     "US.AAPL": {
