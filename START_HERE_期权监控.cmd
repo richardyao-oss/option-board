@@ -37,7 +37,7 @@ if errorlevel 1 (
 
 timeout /t 2 /nobreak >nul
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/api/info' -TimeoutSec 4; $r.Content | Out-File -FilePath $env:LOG -Append -Encoding utf8; exit 0 } catch { $_ | Out-File -FilePath $env:LOG -Append -Encoding utf8; exit 1 }" >> "%LOG%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/api/info' -TimeoutSec 4; $r.Content; exit 0 } catch { Write-Error $_; exit 1 }" >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo.
   echo Report console did not respond on http://127.0.0.1:8765/.
