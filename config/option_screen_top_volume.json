@@ -1,0 +1,36 @@
+{
+  "filters": [
+    {
+      "kind": "option",
+      "indicator_type": "OPTION_TYPE",
+      "values": [1]
+    },
+    {
+      "kind": "option",
+      "indicator_type": "OPTION_TYPE",
+      "values": [2],
+      "or_with_previous": true
+    }
+  ],
+  "sorts": [
+    {
+      "indicator_type": "VOLUME",
+      "desc": true
+    }
+  ],
+  "option_retrieves": [
+    "OPTION_TYPE",
+    "STRIKE_PRICE",
+    "VOLUME",
+    "TURNOVER",
+    "OPEN_INTEREST",
+    "IMPLIED_VOLATILITY",
+    "PREMIUM"
+  ],
+  "underlying_retrieves": [
+    "STOCK_PRICE",
+    "IV",
+    "HV",
+    "MARKET_CAP"
+  ]
+}
