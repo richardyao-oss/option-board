@@ -18,6 +18,7 @@ TRACKED_OUTPUTS = [
     ROOT / "data" / "daily_option_signals.csv",
     ROOT / "data" / "option_screen_contract_snapshot.csv",
     ROOT / "data" / "option_screen_volume_contract_snapshot.csv",
+    ROOT / "data" / "option_unusual_snapshot.csv",
     ROOT / "data" / "current_quote_snapshot.json",
     ROOT / "data" / "option_screen_snapshot_status.json",
     ROOT / "reports" / "options_anomaly_report.html",

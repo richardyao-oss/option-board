@@ -22,6 +22,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import option_screen_monitor as osm
+import option_unusual_monitor as oum
 import dashboard_renderer
 import report_groups as rg
 import sync_settings
@@ -69,6 +70,7 @@ INTRADAY_AGG_COLUMNS = INTRADAY_META_COLUMNS + AGG_COLUMNS
 INTRADAY_SIGNAL_COLUMNS = INTRADAY_META_COLUMNS + SIGNAL_COLUMNS
 SNAPSHOT_STATUS_FILE = "option_screen_snapshot_status.json"
 VOLUME_CONTRACT_SNAPSHOT_FILE = "option_screen_volume_contract_snapshot.csv"
+UNUSUAL_SNAPSHOT_FILE = "option_unusual_snapshot.csv"
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -261,6 +263,27 @@ def upsert_rows(path: Path, columns: list[str], rows: list[dict[str, Any]], key_
 def replace_rows_for_key(path: Path, columns: list[str], rows: list[dict[str, Any]], key_col: str, key_value: str) -> None:
     kept = [row for row in read_csv(path) if str(row.get(key_col, "")) != key_value]
     write_csv(path, columns, kept + rows)
+
+
+def collect_option_unusual_rows(
+    watchlist: list[str],
+    snapshot_date: str,
+    request_pause: float,
+) -> list[dict[str, Any]]:
+    try:
+        rows, warnings = oum.collect_unusual_rows(
+            watchlist=watchlist,
+            snapshot_date=snapshot_date,
+            request_pause=request_pause,
+            time_range=1,
+            language_id=0,
+        )
+    except Exception as exc:
+        print(f"[warn] option unusual collection failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return []
+    for warning in warnings:
+        print(f"[warn] option unusual: {warning}", file=sys.stderr)
+    return rows
 
 
 def average(rows: list[dict[str, Any]], key: str) -> float:
@@ -1192,6 +1215,7 @@ def main() -> int:
 
     daily_contract_path = args.data_dir / "option_screen_contract_snapshot.csv"
     daily_volume_contract_path = args.data_dir / VOLUME_CONTRACT_SNAPSHOT_FILE
+    unusual_path = args.data_dir / UNUSUAL_SNAPSHOT_FILE
     daily_agg_path = args.data_dir / "option_screen_underlying_snapshot.csv"
     daily_signal_path = args.data_dir / "daily_option_signals.csv"
     quote_snapshot_path = args.data_dir / "current_quote_snapshot.json"
@@ -1215,10 +1239,12 @@ def main() -> int:
             request_pause=args.request_pause,
             sort_by="volume",
         )
+        unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
         aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
         replace_rows_for_key(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, "snapshot_date", snapshot_date)
         replace_rows_for_key(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, "snapshot_date", snapshot_date)
+        replace_rows_for_key(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, "snapshot_date", snapshot_date)
         replace_rows_for_key(daily_agg_path, osm.AGG_COLUMNS, aggregates, "snapshot_date", snapshot_date)
 
         all_daily_agg = read_csv(daily_agg_path)
@@ -1226,6 +1252,7 @@ def main() -> int:
         write_csv(daily_signal_path, SIGNAL_COLUMNS, all_daily_signals)
         all_daily_contracts = read_csv(daily_contract_path)
         all_daily_volume_contracts = read_csv(daily_volume_contract_path)
+        all_unusual_rows = read_csv(unusual_path)
         snapshot_status = write_snapshot_status(snapshot_status_path, metadata)
         quote_snapshot = write_quote_snapshot(quote_snapshot_path, quote_symbols_from_groups(report_groups))
         dashboard_renderer.render_html(
@@ -1236,6 +1263,7 @@ def main() -> int:
             snapshot_date,
             trailing_weekdays(snapshot_date, 7),
             volume_contract_rows=all_daily_volume_contracts,
+            option_unusual_rows=all_unusual_rows,
             report_groups=report_groups,
             quote_map=quote_snapshot.get("quotes", {}),
             snapshot_status=snapshot_status,
@@ -1247,6 +1275,7 @@ def main() -> int:
         print(f"Watchlist symbols scanned: {len(watchlist)}")
         print(f"Option contracts scanned:  {total_seen}")
         print(f"Volume top contracts scanned: {volume_total_seen}")
+        print(f"Option unusual rows parsed:   {len(unusual_rows)}")
         print(f"Saved daily slot:          {daily_agg_path}")
         print(f"Saved HTML report:         {args.html}")
         return 0
@@ -1268,10 +1297,12 @@ def main() -> int:
         request_pause=args.request_pause,
         sort_by="volume",
     )
+    unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
     aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
     replace_rows_for_key(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, "snapshot_date", snapshot_date)
     replace_rows_for_key(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, "snapshot_date", snapshot_date)
+    replace_rows_for_key(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, "snapshot_date", snapshot_date)
     replace_rows_for_key(daily_agg_path, osm.AGG_COLUMNS, aggregates, "snapshot_date", snapshot_date)
 
     all_agg = read_csv(daily_agg_path)
@@ -1279,6 +1310,7 @@ def main() -> int:
     write_csv(daily_signal_path, SIGNAL_COLUMNS, signals)
     all_contracts = read_csv(daily_contract_path)
     all_volume_contracts = read_csv(daily_volume_contract_path)
+    all_unusual_rows = read_csv(unusual_path)
     metadata = collection_metadata(snapshot_date, "complete")
     snapshot_status = write_snapshot_status(snapshot_status_path, metadata)
     quote_snapshot = write_quote_snapshot(quote_snapshot_path, quote_symbols_from_groups(report_groups))
@@ -1290,6 +1322,7 @@ def main() -> int:
         snapshot_date,
         trailing_weekdays(snapshot_date, 7),
         volume_contract_rows=all_volume_contracts,
+        option_unusual_rows=all_unusual_rows,
         report_groups=report_groups,
         quote_map=quote_snapshot.get("quotes", {}),
         snapshot_status=snapshot_status,
@@ -1299,6 +1332,7 @@ def main() -> int:
     print(f"Watchlist symbols scanned: {len(watchlist)}")
     print(f"Option contracts scanned:  {total_seen}")
     print(f"Volume top contracts scanned: {volume_total_seen}")
+    print(f"Option unusual rows parsed:   {len(unusual_rows)}")
     print(f"Saved signals:            {daily_signal_path}")
     print(f"Saved HTML report:        {args.html}")
     return 0

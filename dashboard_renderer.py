@@ -321,6 +321,84 @@ def contract_table(contracts: list[dict[str, str]], stock_price: Any = None) -> 
     )
 
 
+def contract_identity(row: dict[str, Any]) -> tuple[str, str, str]:
+    expiry = str(row.get("expiry") or option_expiry(str(row.get("option_code", ""))) or "")
+    option_type = str(row.get("option_type", "")).upper()
+    strike = f"{safe_float(row.get('strike')):.4f}"
+    return expiry, option_type, strike
+
+
+def matched_unusual_rows(
+    contracts: list[dict[str, str]],
+    unusual_rows: list[dict[str, str]],
+    snapshot_date: str,
+    symbol: str,
+    limit: int = 10,
+) -> list[dict[str, str]]:
+    if not contracts or not unusual_rows:
+        return []
+    top_codes = {str(row.get("option_code", "")) for row in contracts if row.get("option_code")}
+    top_identities = {contract_identity(row) for row in contracts}
+    matched: list[dict[str, str]] = []
+    for row in unusual_rows:
+        if str(row.get("snapshot_date", "")) != snapshot_date:
+            continue
+        if str(row.get("underlying", "")) != symbol:
+            continue
+        if str(row.get("direction", "")).upper() not in {"BUY", "SELL"}:
+            continue
+        option_code = str(row.get("option_code", ""))
+        if option_code and option_code in top_codes:
+            matched.append(row)
+            continue
+        if contract_identity(row) in top_identities:
+            matched.append(row)
+    matched.sort(key=lambda row: (safe_float(row.get("turnover")), safe_int(row.get("volume"))), reverse=True)
+    return matched[:limit]
+
+
+def unusual_match_table(rows: list[dict[str, str]], stock_price: Any = None) -> str:
+    if not rows:
+        return ""
+
+    max_turnover = max((safe_float(row.get("turnover")) for row in rows), default=0.0)
+    max_volume = max((safe_int(row.get("volume")) for row in rows), default=0)
+    body = []
+    for row in rows:
+        expiry = str(row.get("expiry") or option_expiry(str(row.get("option_code", ""))) or "--")
+        option_type = str(row.get("option_type", "")).upper()
+        type_class = "call-text" if option_type == "CALL" else "put-text" if option_type == "PUT" else ""
+        type_label = html.escape(option_type[:1] or "--")
+        strike_label = html.escape(fmt_strike(row.get("strike")))
+        marker, marker_class = option_moneyness_marker(option_type, row.get("strike"), stock_price)
+        marker_html = f" <span class='otm-mark {marker_class}'>{html.escape(marker)}</span>" if marker else ""
+        volume = safe_int(row.get("volume"))
+        turnover = safe_float(row.get("turnover"))
+        volume_width = min(100.0, volume / max_volume * 100) if max_volume > 0 else 0.0
+        turnover_width = min(100.0, turnover / max_turnover * 100) if max_turnover > 0 else 0.0
+        direction = str(row.get("direction", "")).upper()
+        direction_label = "主动买入" if direction == "BUY" else "主动卖出" if direction == "SELL" else ""
+        direction_class = "buy" if direction == "BUY" else "sell" if direction == "SELL" else ""
+        body.append(
+            "<tr>"
+            f"<td class='expiry-cell'>{html.escape(expiry)}</td>"
+            f"<td class='contract-kind'><span class='{type_class}'>{type_label}</span> <span>{strike_label}</span>{marker_html}</td>"
+            f"<td class='volume-cell'><span class='volume-bar' style='width:{volume_width:.1f}%'></span><span class='volume-value'>{fmt_int(volume)}</span></td>"
+            f"<td class='turnover-cell'><span class='turnover-bar' style='width:{turnover_width:.1f}%'></span><span class='turnover-value'>{html.escape(fmt_musd(turnover))}</span></td>"
+            f"<td class='unusual-direction {direction_class}'>{html.escape(direction_label)}</td>"
+            "</tr>"
+        )
+
+    return (
+        "<section class='unusual-matches'>"
+        "<table class='contract-table unusual-table'>"
+        "<thead><tr><th>到期</th><th>型/行权</th><th>量</th><th>额($M)</th><th>方向</th></tr></thead>"
+        f"<tbody>{''.join(body)}</tbody>"
+        "</table>"
+        "</section>"
+    )
+
+
 def daily_symbol_infos(
     agg_rows: list[dict[str, Any]],
     signal_rows: list[dict[str, Any]],
@@ -372,10 +450,12 @@ def render_daily_rows(
     quote_map: dict[str, Any] | None = None,
     snapshot_status: dict[str, Any] | None = None,
     volume_contract_rows: list[dict[str, str]] | None = None,
+    option_unusual_rows: list[dict[str, str]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     groups = groups or []
     quote_map = quote_map or {}
     snapshot_status = snapshot_status or {}
+    option_unusual_rows = option_unusual_rows or []
     is_intraday_snapshot = (
         str(snapshot_status.get("snapshot_type", "")).lower() == "intraday"
         and str(snapshot_status.get("snapshot_date") or snapshot_status.get("trade_date") or "") == snapshot_date
@@ -445,6 +525,8 @@ def render_daily_rows(
             limit=10,
             volume_contract_rows=volume_contract_rows,
         )
+        unusual_matches = matched_unusual_rows(contracts, option_unusual_rows, snapshot_date, symbol, limit=10)
+        unusual_html = unusual_match_table(unusual_matches, quote.get("stock_price"))
         rows_html.append(f"""
         <article class="scan-row" data-symbol="{html.escape(symbol)}" data-groups="{group_attr(symbol, groups)}" data-direction="{html.escape(direction)}" data-score="{score:.2f}" data-total="{total}" data-pcr="{pcr:.4f}">
           <section class="identity">
@@ -468,6 +550,7 @@ def render_daily_rows(
               {contract_table(contracts, quote.get("stock_price"))}
             </aside>
           </section>
+          {unusual_html}
         </article>
         """)
 
@@ -492,9 +575,11 @@ def render_intraday_rows(
     groups: list[tuple[str, set[str]]] | None = None,
     quote_map: dict[str, Any] | None = None,
     intraday_volume_contract_rows: list[dict[str, str]] | None = None,
+    option_unusual_rows: list[dict[str, str]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     groups = groups or []
     quote_map = quote_map or {}
+    option_unusual_rows = option_unusual_rows or []
     latest_time = latest_snapshot_value(intraday_agg_rows + intraday_signal_rows, "snapshot_time")
     agg_rows = list(intraday_agg_rows)
     signal_rows = list(intraday_signal_rows)
@@ -558,6 +643,8 @@ def render_intraday_rows(
             snapshot_time=snapshot_time or None,
             volume_contract_rows=intraday_volume_contract_rows,
         )
+        unusual_matches = matched_unusual_rows(contracts, option_unusual_rows, snapshot_date, symbol, limit=10)
+        unusual_html = unusual_match_table(unusual_matches, quote_map.get(symbol, {}).get("stock_price"))
         total_text = f"{total:,}" if total else "暂无数据"
         quote = quote_map.get(symbol, {})
         price_text = fmt_price(quote.get("stock_price"))
@@ -598,6 +685,7 @@ def render_intraday_rows(
               {contract_table(contracts, quote.get("stock_price"))}
             </aside>
           </section>
+          {unusual_html}
         </article>
         """)
 
@@ -628,6 +716,7 @@ def render_html(
     intraday_signal_rows: list[dict[str, Any]] | None = None,
     intraday_contract_rows: list[dict[str, str]] | None = None,
     intraday_volume_contract_rows: list[dict[str, str]] | None = None,
+    option_unusual_rows: list[dict[str, str]] | None = None,
     report_groups: dict[str, list[str]] | None = None,
     quote_map: dict[str, Any] | None = None,
     snapshot_status: dict[str, Any] | None = None,
@@ -637,6 +726,7 @@ def render_html(
     intraday_signal_rows = intraday_signal_rows or []
     intraday_contract_rows = intraday_contract_rows or []
     intraday_volume_contract_rows = intraday_volume_contract_rows or []
+    option_unusual_rows = option_unusual_rows or []
     groups = normalize_report_groups(report_groups)
     quote_map = quote_map or {}
     snapshot_status = snapshot_status or {}
@@ -651,6 +741,7 @@ def render_html(
         quote_map,
         snapshot_status,
         volume_contract_rows,
+        option_unusual_rows,
     )
     first_day = display_dates[0]
     last_day = display_dates[-1]
@@ -782,6 +873,18 @@ def render_html(
     .turnover-cell {{ position: relative; overflow: hidden; }}
     .turnover-bar {{ position: absolute; left: 4px; top: 4px; bottom: 4px; border-radius: 2px; background: rgba(76, 113, 214, .22); z-index: 0; }}
     .turnover-value {{ position: relative; z-index: 1; }}
+    .unusual-matches {{ margin-top: 14px; border: 1px solid #e1e9f4; border-radius: 10px; background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(250,253,255,.92)); padding: 10px 12px; box-shadow: 0 8px 18px rgba(21,55,91,.025); }}
+    .unusual-table {{ font-size: 12px; }}
+    .unusual-table th {{ padding-top: 7px; padding-bottom: 7px; }}
+    .unusual-table td {{ padding-top: 5px; padding-bottom: 5px; }}
+    .unusual-table th:nth-child(1), .unusual-table td:nth-child(1) {{ width: 28%; }}
+    .unusual-table th:nth-child(2), .unusual-table td:nth-child(2) {{ width: 22%; }}
+    .unusual-table th:nth-child(3), .unusual-table td:nth-child(3) {{ width: 18%; text-align: right; }}
+    .unusual-table th:nth-child(4), .unusual-table td:nth-child(4) {{ width: 18%; text-align: right; }}
+    .unusual-table th:nth-child(5), .unusual-table td:nth-child(5) {{ width: 14%; text-align: right; }}
+    .unusual-direction {{ font-size: 11px; font-weight: 850; white-space: nowrap; }}
+    .unusual-direction.buy {{ color: var(--call); }}
+    .unusual-direction.sell {{ color: var(--put); }}
     .contract-empty, .empty-board {{ color: #ced4da; border: 1px solid var(--hair); border-radius: 5px; background: var(--panel); padding: 14px; text-align: center; font-size: 12px; }}
     .hidden, .tab-panel.hidden {{ display: none; }}
     ::-webkit-scrollbar {{ width: 5px; height: 5px; }}

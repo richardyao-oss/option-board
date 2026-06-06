@@ -21,6 +21,7 @@ data/*
 !data/daily_option_signals.csv
 !data/option_screen_contract_snapshot.csv
 !data/option_screen_volume_contract_snapshot.csv
+!data/option_unusual_snapshot.csv
 !data/current_quote_snapshot.json
 !data/option_screen_snapshot_status.json
 
