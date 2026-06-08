@@ -121,6 +121,8 @@ def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[s
     ]
     if args.symbols:
         cmd.extend(["--symbols", *args.symbols])
+        if args.merge_partial:
+            cmd.append("--merge-partial")
     else:
         cmd.extend([
             "--watchlist-source",
@@ -210,6 +212,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--request-pause", type=float, default=3.8)
     parser.add_argument("--timeout", type=int, default=2400)
     parser.add_argument("--allow-market-hours-preopen", action="store_true")
+    parser.add_argument("--merge-partial", action="store_true")
     return parser.parse_args()
 
 

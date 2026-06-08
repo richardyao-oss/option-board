@@ -227,6 +227,34 @@ class CoreLogicTests(unittest.TestCase):
         self.assertEqual(stats["unparsed_records"], 0)
         self.assertEqual(rows[0]["direction"], "BUY")
 
+    def test_replace_rows_for_date_symbols_preserves_other_symbols(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rows.csv"
+            columns = ["snapshot_date", "underlying", "value"]
+            dor.write_csv(
+                path,
+                columns,
+                [
+                    {"snapshot_date": "2026-06-08", "underlying": "US.A", "value": "old-a"},
+                    {"snapshot_date": "2026-06-08", "underlying": "US.B", "value": "old-b"},
+                    {"snapshot_date": "2026-06-05", "underlying": "US.A", "value": "old-date"},
+                ],
+            )
+
+            dor.replace_rows_for_date_symbols(
+                path,
+                columns,
+                [{"snapshot_date": "2026-06-08", "underlying": "US.A", "value": "new-a"}],
+                "2026-06-08",
+                ["US.A"],
+            )
+
+            rows = read_csv(path)
+            values = {(row["snapshot_date"], row["underlying"]): row["value"] for row in rows}
+            self.assertEqual(values[("2026-06-08", "US.A")], "new-a")
+            self.assertEqual(values[("2026-06-08", "US.B")], "old-b")
+            self.assertEqual(values[("2026-06-05", "US.A")], "old-date")
+
     def test_render_existing_data_keeps_cards_and_unusual_section(self) -> None:
         agg_rows = read_csv(DATA / "option_screen_underlying_snapshot.csv")
         signal_rows = read_csv(DATA / "daily_option_signals.csv")

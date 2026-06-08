@@ -218,17 +218,10 @@ def resolve_group_name(name: str, report_groups: dict[str, list[str]]) -> str:
     raise RuntimeError(f"Report group not found: {name}. Available groups: {available}")
 
 
-def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, list[str]]]:
-    explicit_symbols = unique_symbols(getattr(args, "symbols", None) or [])
-    if explicit_symbols:
-        symbols = remove_excluded_symbols(explicit_symbols)
-        return symbols, {rg.COMBINED_GROUP_NAME: symbols}
-
+def build_report_groups(args: argparse.Namespace) -> dict[str, list[str]]:
     if args.watchlist_source == "file":
         primary_symbols = load_file_watchlist(args.watchlist)
-        primary_name = args.group_name or rg.PRIMARY_GROUP_NAME
     else:
-        primary_name = args.group_name or rg.PRIMARY_GROUP_NAME
         primary_symbols = load_futu_watchlist(
             group_type=args.group_type,
             include_system=args.include_system_groups,
@@ -242,10 +235,20 @@ def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, lis
     for symbols in rg.STATIC_REPORT_GROUPS.values():
         combined_symbols.extend(symbols)
 
-    report_groups: dict[str, list[str]] = {
+    return {
         rg.COMBINED_GROUP_NAME: remove_excluded_symbols(combined_symbols)
     }
 
+
+def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, list[str]]]:
+    explicit_symbols = unique_symbols(getattr(args, "symbols", None) or [])
+    if explicit_symbols:
+        symbols = remove_excluded_symbols(explicit_symbols)
+        if getattr(args, "merge_partial", False):
+            return symbols, build_report_groups(args)
+        return symbols, {rg.COMBINED_GROUP_NAME: symbols}
+
+    report_groups = build_report_groups(args)
     scan_group_request = getattr(args, "scan_group_name", None)
     if scan_group_request:
         scan_group_name = resolve_group_name(scan_group_request, report_groups)
@@ -269,6 +272,38 @@ def replace_rows_for_key(path: Path, columns: list[str], rows: list[dict[str, An
     write_csv(path, columns, kept + rows)
 
 
+def replace_rows_for_date_symbols(
+    path: Path,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    snapshot_date: str,
+    symbols: list[str],
+) -> None:
+    target_symbols = {symbol.upper() for symbol in symbols}
+    kept = []
+    for row in read_csv(path):
+        same_date = str(row.get("snapshot_date", "")) == snapshot_date
+        same_symbol = str(row.get("underlying", "")).upper() in target_symbols
+        if same_date and same_symbol:
+            continue
+        kept.append(row)
+    write_csv(path, columns, kept + rows)
+
+
+def write_snapshot_rows(
+    path: Path,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    snapshot_date: str,
+    watchlist: list[str],
+    merge_partial: bool,
+) -> None:
+    if merge_partial:
+        replace_rows_for_date_symbols(path, columns, rows, snapshot_date, watchlist)
+    else:
+        replace_rows_for_key(path, columns, rows, "snapshot_date", snapshot_date)
+
+
 def collection_scope(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "option_screen_turnover_sort": "turnover",
@@ -282,6 +317,7 @@ def collection_scope(args: argparse.Namespace) -> dict[str, Any]:
         "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
         "option_unusual_source": "get_derivative_unusual(option_unusual)",
         "option_unusual_time_range_days": 1,
+        "partial_merge": bool(getattr(args, "merge_partial", False)),
     }
 
 
@@ -597,6 +633,7 @@ def main() -> int:
     parser.add_argument("--min-history-days", type=int, default=3)
     parser.add_argument("--html", type=Path, default=Path("reports/options_anomaly_report.html"))
     parser.add_argument("--allow-market-hours-preopen", action="store_true")
+    parser.add_argument("--merge-partial", action="store_true")
     args = parser.parse_args()
     args.data_dir = sync_settings.resolve_data_dir(args.data_dir)
     args.html = sync_settings.resolve_report_path(args.html)
@@ -633,10 +670,10 @@ def main() -> int:
         unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
         aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
-        replace_rows_for_key(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, "snapshot_date", snapshot_date)
-        replace_rows_for_key(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, "snapshot_date", snapshot_date)
-        replace_rows_for_key(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, "snapshot_date", snapshot_date)
-        replace_rows_for_key(daily_agg_path, osm.AGG_COLUMNS, aggregates, "snapshot_date", snapshot_date)
+        write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
+        write_snapshot_rows(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, snapshot_date, watchlist, args.merge_partial)
+        write_snapshot_rows(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, snapshot_date, watchlist, args.merge_partial)
+        write_snapshot_rows(daily_agg_path, osm.AGG_COLUMNS, aggregates, snapshot_date, watchlist, args.merge_partial)
 
         all_daily_agg = read_csv(daily_agg_path)
         all_daily_signals = build_signals(all_daily_agg, min_total=args.min_total, min_history_days=args.min_history_days)
@@ -691,10 +728,10 @@ def main() -> int:
     unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
     aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
-    replace_rows_for_key(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, "snapshot_date", snapshot_date)
-    replace_rows_for_key(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, "snapshot_date", snapshot_date)
-    replace_rows_for_key(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, "snapshot_date", snapshot_date)
-    replace_rows_for_key(daily_agg_path, osm.AGG_COLUMNS, aggregates, "snapshot_date", snapshot_date)
+    write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
+    write_snapshot_rows(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, snapshot_date, watchlist, args.merge_partial)
+    write_snapshot_rows(unusual_path, oum.UNUSUAL_COLUMNS, unusual_rows, snapshot_date, watchlist, args.merge_partial)
+    write_snapshot_rows(daily_agg_path, osm.AGG_COLUMNS, aggregates, snapshot_date, watchlist, args.merge_partial)
 
     all_agg = read_csv(daily_agg_path)
     signals = build_signals(all_agg, min_total=args.min_total, min_history_days=args.min_history_days)
