@@ -255,6 +255,21 @@ class CoreLogicTests(unittest.TestCase):
             self.assertEqual(values[("2026-06-08", "US.B")], "old-b")
             self.assertEqual(values[("2026-06-05", "US.A")], "old-date")
 
+    def test_stored_report_symbols_uses_latest_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            dor.write_csv(
+                data_dir / "option_screen_underlying_snapshot.csv",
+                ["snapshot_date", "underlying"],
+                [
+                    {"snapshot_date": "2026-06-05", "underlying": "US.OLD"},
+                    {"snapshot_date": "2026-06-08", "underlying": "US.AAPL"},
+                    {"snapshot_date": "2026-06-08", "underlying": "US.NOK"},
+                ],
+            )
+
+            self.assertEqual(dor.stored_report_symbols(data_dir), ["US.AAPL", "US.NOK"])
+
     def test_render_existing_data_keeps_cards_and_unusual_section(self) -> None:
         agg_rows = read_csv(DATA / "option_screen_underlying_snapshot.csv")
         signal_rows = read_csv(DATA / "daily_option_signals.csv")

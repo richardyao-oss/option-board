@@ -209,6 +209,19 @@ def remove_excluded_symbols(symbols: list[str]) -> list[str]:
     return [symbol for symbol in unique_symbols(symbols) if symbol not in excluded]
 
 
+def stored_report_symbols(data_dir: Path) -> list[str]:
+    rows = read_csv(data_dir / "option_screen_underlying_snapshot.csv")
+    dates = sorted({str(row.get("snapshot_date", "")) for row in rows if row.get("snapshot_date")})
+    if not dates:
+        return []
+    latest_date = dates[-1]
+    return unique_symbols([
+        str(row.get("underlying", ""))
+        for row in rows
+        if str(row.get("snapshot_date", "")) == latest_date
+    ])
+
+
 def resolve_group_name(name: str, report_groups: dict[str, list[str]]) -> str:
     requested = rg.STATIC_GROUP_ALIASES.get(name.strip().casefold(), name.strip())
     for group_name in report_groups:
@@ -245,7 +258,12 @@ def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, lis
     if explicit_symbols:
         symbols = remove_excluded_symbols(explicit_symbols)
         if getattr(args, "merge_partial", False):
-            return symbols, build_report_groups(args)
+            report_groups = build_report_groups(args)
+            report_symbols = list(report_groups.get(rg.COMBINED_GROUP_NAME, []))
+            report_symbols.extend(stored_report_symbols(args.data_dir))
+            report_symbols.extend(symbols)
+            report_groups[rg.COMBINED_GROUP_NAME] = remove_excluded_symbols(report_symbols)
+            return symbols, report_groups
         return symbols, {rg.COMBINED_GROUP_NAME: symbols}
 
     report_groups = build_report_groups(args)
