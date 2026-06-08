@@ -1,58 +1,103 @@
 {
-  "snapshot_time": "2026-06-08 23:24:04",
-  "as_of_bjt": "2026-06-08 23:24:04 BJT",
-  "as_of_et": "2026-06-08 11:24:04 ET",
+  "snapshot_time": "2026-06-09 00:08:24",
+  "as_of_bjt": "2026-06-09 00:08:24 BJT",
+  "as_of_et": "2026-06-08 12:08:24 ET",
   "source": "get_market_snapshot",
   "quotes": {
-    "US.AAPL": {
-      "stock_price": 314.33,
-      "change_ratio": 2.2744,
-      "update_time": "2026-06-08 11:24:04"
+    "US.ADSK": {
+      "stock_price": 225.97,
+      "change_ratio": -1.7351,
+      "update_time": "2026-06-08 12:08:17"
     },
-    "US.CRWV": {
-      "stock_price": 102.27,
-      "change_ratio": 1.8727,
-      "update_time": "2026-06-08 11:24:04"
+    "US.AEHR": {
+      "stock_price": 98.0699,
+      "change_ratio": -0.3861,
+      "update_time": "2026-06-08 12:08:12"
+    },
+    "US.CRM": {
+      "stock_price": 182.17,
+      "change_ratio": -1.8798,
+      "update_time": "2026-06-08 12:08:20"
+    },
+    "US.CRWD": {
+      "stock_price": 654.73,
+      "change_ratio": -2.4276,
+      "update_time": "2026-06-08 12:08:18"
+    },
+    "US.DDOG": {
+      "stock_price": 229.13,
+      "change_ratio": -2.1272,
+      "update_time": "2026-06-08 12:08:18"
+    },
+    "US.DELL": {
+      "stock_price": 403.99,
+      "change_ratio": 2.4341,
+      "update_time": "2026-06-08 12:08:19"
+    },
+    "US.FUTU": {
+      "stock_price": 90.35,
+      "change_ratio": -2.1445,
+      "update_time": "2026-06-08 12:08:07"
     },
     "US.GFS": {
-      "stock_price": 78.565,
-      "change_ratio": 4.0183,
-      "update_time": "2026-06-08 11:23:45"
+      "stock_price": 78.21,
+      "change_ratio": 3.5483,
+      "update_time": "2026-06-08 12:08:18"
     },
-    "US.HOOD": {
-      "stock_price": 85.17,
-      "change_ratio": 3.2739,
-      "update_time": "2026-06-08 11:24:03"
+    "US.INTU": {
+      "stock_price": 301.0,
+      "change_ratio": 1.4288,
+      "update_time": "2026-06-08 12:08:16"
     },
-    "US.INTC": {
-      "stock_price": 111.92,
-      "change_ratio": 12.8567,
-      "update_time": "2026-06-08 11:24:03"
-    },
-    "US.NBIS": {
-      "stock_price": 232.27,
-      "change_ratio": 1.9578,
-      "update_time": "2026-06-08 11:23:59"
+    "US.MDB": {
+      "stock_price": 353.3,
+      "change_ratio": 0.7299,
+      "update_time": "2026-06-08 12:08:12"
     },
     "US.NOK": {
-      "stock_price": 14.95,
-      "change_ratio": 3.9638,
-      "update_time": "2026-06-08 11:24:04"
+      "stock_price": 14.8,
+      "change_ratio": 2.9207,
+      "update_time": "2026-06-08 12:08:24"
+    },
+    "US.NOW": {
+      "stock_price": 114.21,
+      "change_ratio": 1.5651,
+      "update_time": "2026-06-08 12:08:20"
+    },
+    "US.PANW": {
+      "stock_price": 266.69,
+      "change_ratio": -1.9702,
+      "update_time": "2026-06-08 12:08:11"
     },
     "US.QCOM": {
-      "stock_price": 220.85,
-      "change_ratio": 2.2738,
-      "update_time": "2026-06-08 11:24:03"
+      "stock_price": 219.4101,
+      "change_ratio": 1.607,
+      "update_time": "2026-06-08 12:08:21"
     },
-    "US.RDDT": {
-      "stock_price": 172.7,
-      "change_ratio": -0.4324,
-      "update_time": "2026-06-08 11:23:39"
+    "US.SAP": {
+      "stock_price": 182.51,
+      "change_ratio": -1.2231,
+      "update_time": "2026-06-08 12:08:22"
     },
-    "US.SMCI": {
-      "stock_price": 43.605,
-      "change_ratio": 4.719,
-      "update_time": "2026-06-08 11:24:03"
+    "US.SNOW": {
+      "stock_price": 241.32,
+      "change_ratio": 1.2843,
+      "update_time": "2026-06-08 12:08:07"
+    },
+    "US.TEAM": {
+      "stock_price": 97.785,
+      "change_ratio": -1.694,
+      "update_time": "2026-06-08 12:07:34"
+    },
+    "US.VEEV": {
+      "stock_price": 167.775,
+      "change_ratio": -2.8011,
+      "update_time": "2026-06-08 12:08:16"
+    },
+    "US.WDAY": {
+      "stock_price": 142.9386,
+      "change_ratio": -0.9297,
+      "update_time": "2026-06-08 12:08:20"
     }
   }
 }
