@@ -219,6 +219,11 @@ def resolve_group_name(name: str, report_groups: dict[str, list[str]]) -> str:
 
 
 def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, list[str]]]:
+    explicit_symbols = unique_symbols(getattr(args, "symbols", None) or [])
+    if explicit_symbols:
+        symbols = remove_excluded_symbols(explicit_symbols)
+        return symbols, {rg.COMBINED_GROUP_NAME: symbols}
+
     if args.watchlist_source == "file":
         primary_symbols = load_file_watchlist(args.watchlist)
         primary_name = args.group_name or rg.PRIMARY_GROUP_NAME
@@ -579,6 +584,7 @@ def main() -> int:
     parser.add_argument("--group-type", choices=["ALL", "CUSTOM", "SYSTEM"], default="CUSTOM")
     parser.add_argument("--group-name", default=None)
     parser.add_argument("--scan-group-name", default=None)
+    parser.add_argument("--symbols", nargs="+", default=None)
     parser.add_argument("--include-system-groups", action="store_true")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--snapshot-date", default=None)

@@ -106,12 +106,6 @@ def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[s
         str(ROOT / "daily_option_report.py"),
         "--mode",
         args.mode,
-        "--watchlist-source",
-        "futu-user",
-        "--group-type",
-        "CUSTOM",
-        "--group-name",
-        args.group_name,
         "--pages",
         str(args.pages),
         "--page-count",
@@ -125,6 +119,17 @@ def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[s
         "--html",
         str(ROOT / "reports" / "options_anomaly_report.html"),
     ]
+    if args.symbols:
+        cmd.extend(["--symbols", *args.symbols])
+    else:
+        cmd.extend([
+            "--watchlist-source",
+            "futu-user",
+            "--group-type",
+            "CUSTOM",
+            "--group-name",
+            args.group_name,
+        ])
     if args.snapshot_date:
         cmd.extend(["--snapshot-date", args.snapshot_date])
     if args.allow_market_hours_preopen:
@@ -197,6 +202,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run an option dashboard update inside a Git sync transaction.")
     parser.add_argument("--mode", choices=["preopen", "intraday"], required=True)
     parser.add_argument("--snapshot-date")
+    parser.add_argument("--symbols", nargs="+")
     parser.add_argument("--group-name", default="To be A8")
     parser.add_argument("--pages", type=int, default=1)
     parser.add_argument("--page-count", type=int, default=200)
