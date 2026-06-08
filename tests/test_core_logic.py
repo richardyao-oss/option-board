@@ -204,9 +204,28 @@ class CoreLogicTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(stats["raw_records"], 2)
         self.assertEqual(stats["parsed_records"], 1)
+        self.assertEqual(stats["excluded_neutral_records"], 0)
         self.assertEqual(stats["unparsed_records"], 1)
         self.assertEqual(rows[0]["direction"], "BUY")
         self.assertEqual(rows[0]["option_type"], "CALL")
+
+    def test_option_unusual_parser_excludes_neutral_records(self) -> None:
+        content = (
+            "6.8 22:15，出现一笔中性看涨期权交易，成交量为3000张，"
+            "未平仓数为53718张，V/OI值为0.5，交易金额为420000USD，"
+            "合约行权价是30，到期日为2027/01/15\n"
+            "6.8 22:16，出现一笔买入看涨期权交易，成交量为2000张，"
+            "未平仓数为53718张，V/OI值为0.5，交易金额为280000USD，"
+            "合约行权价是30，到期日为2027/01/15"
+        )
+        rows, stats = oum.parse_unusual_content_with_stats(content, "2026-06-08", "US.NOK")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(stats["raw_records"], 2)
+        self.assertEqual(stats["parsed_records"], 1)
+        self.assertEqual(stats["excluded_neutral_records"], 1)
+        self.assertEqual(stats["unparsed_records"], 0)
+        self.assertEqual(rows[0]["direction"], "BUY")
 
     def test_render_existing_data_keeps_cards_and_unusual_section(self) -> None:
         agg_rows = read_csv(DATA / "option_screen_underlying_snapshot.csv")

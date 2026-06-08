@@ -39,7 +39,7 @@ UNUSUAL_COLUMNS = [
 UNUSUAL_PATTERN = re.compile(
     r"(?P<month>\d{1,2})\.(?P<day>\d{1,2})\s+"
     r"(?P<time>\d{1,2}:\d{2}).*?"
-    r"出现一笔(?P<side>买入|卖出)(?P<option_kind>看涨|看跌|认购|认沽)期权交易.*?"
+    r"出现一笔(?P<side>买入|卖出|中性)(?P<option_kind>看涨|看跌|认购|认沽)期权交易.*?"
     r"成交量为(?P<volume>[\d,]+)张.*?"
     r"交易金额为(?P<turnover>[\d,.]+)USD.*?"
     r"合约行权价是(?P<strike>[\d.]+).*?"
@@ -88,6 +88,8 @@ def normalize_direction(value: str) -> str:
         return "BUY"
     if text in {"卖出", "主动卖出", "SELL"}:
         return "SELL"
+    if text in {"中性", "NEUTRAL"}:
+        return "NEUTRAL"
     return ""
 
 
@@ -110,16 +112,26 @@ def parse_unusual_content_with_stats(
     rows: list[dict[str, Any]] = []
     records = split_records(content)
     failed_examples: list[str] = []
+    excluded_neutral_examples: list[str] = []
+    unparsed_count = 0
+    excluded_neutral_count = 0
     for record in records:
         match = UNUSUAL_PATTERN.search(record)
         if not match:
+            unparsed_count += 1
             if len(failed_examples) < failed_example_limit:
                 failed_examples.append(record)
             continue
         expiry = normalize_expiry(match.group("expiry"))
         option_type = normalize_option_type(match.group("option_kind"))
         direction = normalize_direction(match.group("side"))
+        if direction == "NEUTRAL":
+            excluded_neutral_count += 1
+            if len(excluded_neutral_examples) < failed_example_limit:
+                excluded_neutral_examples.append(record)
+            continue
         if option_type not in {"CALL", "PUT"} or direction not in {"BUY", "SELL"}:
+            unparsed_count += 1
             if len(failed_examples) < failed_example_limit:
                 failed_examples.append(record)
             continue
@@ -141,7 +153,9 @@ def parse_unusual_content_with_stats(
     stats = {
         "raw_records": len(records),
         "parsed_records": len(rows),
-        "unparsed_records": max(0, len(records) - len(rows)),
+        "excluded_neutral_records": excluded_neutral_count,
+        "unparsed_records": unparsed_count,
+        "excluded_neutral_examples": excluded_neutral_examples,
         "failed_examples": failed_examples,
     }
     return rows, stats
@@ -176,7 +190,9 @@ def collect_unusual_rows_with_stats(
         "symbols_failed": 0,
         "raw_records": 0,
         "parsed_records": 0,
+        "excluded_neutral_records": 0,
         "unparsed_records": 0,
+        "excluded_neutral_examples": [],
         "failed_examples": [],
     }
     ctx = create_quote_context()
@@ -208,13 +224,17 @@ def collect_unusual_rows_with_stats(
             rows.extend(parsed_rows)
             stats["raw_records"] += int(parse_stats["raw_records"])
             stats["parsed_records"] += int(parse_stats["parsed_records"])
+            stats["excluded_neutral_records"] += int(parse_stats["excluded_neutral_records"])
             stats["unparsed_records"] += int(parse_stats["unparsed_records"])
+            for example in parse_stats["excluded_neutral_examples"]:
+                if len(stats["excluded_neutral_examples"]) < 10:
+                    stats["excluded_neutral_examples"].append({"underlying": underlying, "raw_text": example})
             for example in parse_stats["failed_examples"]:
                 if len(stats["failed_examples"]) < 10:
                     stats["failed_examples"].append({"underlying": underlying, "raw_text": example})
             if parse_stats["unparsed_records"]:
                 warnings.append(
-                    f"{underlying}: {parse_stats['unparsed_records']} option unusual records were not parsed"
+                    f"{underlying}: {parse_stats['unparsed_records']} option unusual records could not be parsed"
                 )
     finally:
         ctx.close()
@@ -275,6 +295,7 @@ def main() -> int:
         print(
             "Parse stats: "
             f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
+            f"{stats['excluded_neutral_records']} neutral excluded, "
             f"{stats['unparsed_records']} unparsed, "
             f"{stats['symbols_failed']} symbols failed"
         )

@@ -306,6 +306,7 @@ def collect_option_unusual_rows(
     print(
         "Option unusual parse stats: "
         f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
+        f"{stats['excluded_neutral_records']} neutral excluded, "
         f"{stats['unparsed_records']} unparsed, "
         f"{stats['symbols_failed']} symbols failed"
     )
