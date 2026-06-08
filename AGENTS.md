@@ -15,6 +15,12 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - After a successful local data/dashboard update, confirm that Git push completed. Do not ask Richard to run Google Drive sync for routine updates.
 - Do not use `legacy/google_drive/initialize_google_drive_sync.cmd` or `legacy/google_drive/sync_latest_snapshot_to_google_drive.cmd` for routine sync. They are legacy Google Drive tools only.
 
+## Change Methodology
+
+- When Richard introduces a new requirement or changes an existing requirement, first map the impact scope before editing code or running data workflows. Explicitly consider data fetching, write/merge behavior, rendering/display scope, quote scope, validation, Git sync, user-facing scripts, and cross-device behavior.
+- Treat scope-changing features such as partial refresh, single-symbol refresh, remaining-symbol refresh, or workflow mode changes as end-to-end data-flow changes, not as local parameter tweaks.
+- Before implementing a scope-changing change, identify which symbols/files/views are scanned, overwritten, preserved, displayed, quoted, validated, committed, and pushed.
+
 ## Permissions And Skills
 
 - Current Codex sessions usually have write access only inside `C:\Users\yaoru\Documents\New project`.
