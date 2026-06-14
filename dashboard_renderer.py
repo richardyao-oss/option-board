@@ -370,6 +370,7 @@ def unusual_match_table(rows: list[dict[str, str]], stock_price: Any = None) -> 
     max_turnover = max((safe_float(row.get("turnover")) for row in rows), default=0.0)
     max_volume = max((safe_int(row.get("volume")) for row in rows), default=0)
     body = []
+    previous_expiry = ""
     for row in rows:
         expiry = str(row.get("expiry") or option_expiry(str(row.get("option_code", ""))) or "--")
         option_type = str(row.get("option_type", "")).upper()
@@ -385,9 +386,12 @@ def unusual_match_table(rows: list[dict[str, str]], stock_price: Any = None) -> 
         direction = str(row.get("direction", "")).upper()
         direction_label = "主动买入" if direction == "BUY" else "主动卖出" if direction == "SELL" else ""
         direction_class = "buy" if direction == "BUY" else "sell" if direction == "SELL" else ""
+        row_class = " class='expiry-break'" if previous_expiry and expiry != previous_expiry else ""
+        expiry_label = expiry if expiry != previous_expiry else ""
+        previous_expiry = expiry
         body.append(
-            "<tr>"
-            f"<td class='expiry-cell'>{html.escape(expiry)}</td>"
+            f"<tr{row_class}>"
+            f"<td class='expiry-cell'>{html.escape(expiry_label)}</td>"
             f"<td class='contract-kind'><span class='{type_class}'>{type_label}</span> <span>{strike_label}</span>{marker_html}</td>"
             f"<td class='volume-cell'><span class='volume-bar' style='width:{volume_width:.1f}%'></span><span class='volume-value'>{fmt_int(volume)}</span></td>"
             f"<td class='turnover-cell'><span class='turnover-bar' style='width:{turnover_width:.1f}%'></span><span class='turnover-value'>{html.escape(fmt_musd(turnover))}</span></td>"

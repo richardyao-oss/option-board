@@ -192,6 +192,40 @@ class CoreLogicTests(unittest.TestCase):
         rows = dashboard_renderer.matched_unusual_rows(contracts, unusual, "2026-06-05", "US.TEST")
         self.assertEqual([row["strike"] for row in rows], ["210", "200", "180"])
 
+    def test_unusual_match_table_collapses_repeated_expiry_labels(self) -> None:
+        rows = [
+            {
+                "expiry": "2026-06-19",
+                "option_type": "CALL",
+                "strike": "210",
+                "volume": "1000",
+                "turnover": "100000",
+                "direction": "BUY",
+            },
+            {
+                "expiry": "2026-06-19",
+                "option_type": "CALL",
+                "strike": "200",
+                "volume": "900",
+                "turnover": "90000",
+                "direction": "SELL",
+            },
+            {
+                "expiry": "2026-06-26",
+                "option_type": "PUT",
+                "strike": "180",
+                "volume": "800",
+                "turnover": "80000",
+                "direction": "BUY",
+            },
+        ]
+
+        table_html = dashboard_renderer.unusual_match_table(rows)
+
+        self.assertEqual(table_html.count("2026-06-19"), 1)
+        self.assertEqual(table_html.count("2026-06-26"), 1)
+        self.assertIn("class='expiry-break'", table_html)
+
     def test_option_unusual_parser_reports_failures(self) -> None:
         content = (
             "6.6 03:57，出现一笔买入看涨期权交易，成交量为3486张，"
