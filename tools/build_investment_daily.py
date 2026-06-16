@@ -70,6 +70,10 @@ COMPANY_KEYWORDS = {
 
 BENCHMARKS = ["US.SPY", "US.QQQ", "US.IWM", "US..VIX"]
 MAX_PRIMARY_CARDS = 10
+NEWS_DISPLAY_LIMIT = 4
+NEWS_BACKGROUND_FALLBACK_LIMIT = 2
+COMMUNITY_VIEW_LIMIT = 3
+DERIVATIVE_NOTE_LIMIT = 2
 
 
 def now_bjt() -> datetime:
@@ -428,23 +432,30 @@ def query_sentiment(symbols: list[str]) -> dict[str, dict[str, Any]]:
             continue
 
         counts = {"bullish": 0, "bearish": 0, "neutral": 0}
-        views: list[dict[str, str]] = []
+        view_candidates: list[dict[str, str]] = []
         for item in items or []:
             text = clean_text(f"{item.get('title', '')} {item.get('desc', '')}")
             if len(text) < 8:
                 continue
             label = classify_sentiment(text)
             counts[label] += 1
-            if len(views) < 3 and label != "neutral":
-                views.append(
-                    {
-                        "label": label,
-                        "text": text[:160],
-                        "time": normalize_time(item.get("publish_time")),
-                        "url": str(item.get("url") or ""),
-                    }
-                )
+            view_candidates.append(
+                {
+                    "label": label,
+                    "text": text[:180],
+                    "time": normalize_time(item.get("publish_time")),
+                    "url": str(item.get("url") or ""),
+                }
+            )
         total = sum(counts.values())
+        views = [item for item in view_candidates if item["label"] != "neutral"][:COMMUNITY_VIEW_LIMIT]
+        if len(views) < COMMUNITY_VIEW_LIMIT:
+            views.extend(
+                item
+                for item in view_candidates
+                if item["label"] == "neutral" and item not in views
+            )
+        views = views[:COMMUNITY_VIEW_LIMIT]
         results[symbol] = {
             "post_count": total,
             "bullish": round(counts["bullish"] / total * 100, 1) if total else 0,
@@ -609,20 +620,31 @@ def parse_news_time(text: str) -> datetime | None:
         return None
 
 
-def filter_relevant_news(items: list[dict[str, Any]], generated_at: datetime, limit: int = 2) -> list[dict[str, Any]]:
-    relevant: list[dict[str, Any]] = []
+def filter_relevant_news(items: list[dict[str, Any]], generated_at: datetime, limit: int = NEWS_DISPLAY_LIMIT) -> list[dict[str, Any]]:
+    strong_items: list[dict[str, Any]] = []
+    background_items: list[dict[str, Any]] = []
     for item in items:
         title = clean_text(item.get("title"))
         if not title:
             continue
         strong = any(word.lower() in title.lower() for word in IMPORTANT_NEWS_WORDS)
         published = parse_news_time(str(item.get("publish_time") or ""))
-        recent = published is not None and generated_at - published <= timedelta(hours=72)
-        if strong and (recent or published is None):
-            relevant.append(item)
-        if len(relevant) >= limit:
-            break
-    return relevant
+        age = generated_at - published if published is not None else None
+        recent = age is None or age <= timedelta(hours=96)
+        background_recent = age is None or age <= timedelta(days=14)
+        enriched = dict(item)
+        enriched["relevance"] = "强相关" if strong else "背景"
+        if strong and recent:
+            strong_items.append(enriched)
+        elif background_recent:
+            background_items.append(enriched)
+
+    if strong_items:
+        selected = strong_items[:limit]
+        if len(selected) < limit:
+            selected.extend(background_items[: limit - len(selected)])
+        return selected[:limit]
+    return background_items[: min(NEWS_BACKGROUND_FALLBACK_LIMIT, limit)]
 
 
 def quote_class(value: Any) -> str:
@@ -706,6 +728,34 @@ def option_signal_fact(signal: dict[str, Any], holding_direction: str) -> dict[s
     }
 
 
+def build_option_summary(signal_fact: dict[str, Any]) -> str:
+    if signal_fact["relation"] == "本地看板无该标的信号":
+        return "本地期权看板未返回该标的信号。"
+    parts = [f"方向 {signal_fact['direction']}", signal_fact["relation"]]
+    if signal_fact["score"] is not None:
+        parts.append(f"异常分 {signal_fact['score']:.1f}")
+    if signal_fact["put_call_ratio"] is not None:
+        parts.append(f"P/C {signal_fact['put_call_ratio']:.2f}")
+    if signal_fact["volume_change_pct"] is not None:
+        parts.append(f"成交量 {fmt_pct(signal_fact['volume_change_pct'], 0)}")
+    if signal_fact["matched_unusual_count"]:
+        parts.append(f"匹配异动 {signal_fact['matched_unusual_count']} 条")
+    if signal_fact["is_concentrated"]:
+        parts.append("有集中大单")
+    return " · ".join(parts)
+
+
+def build_derivative_notes(facts: list[dict[str, Any]], limit: int = DERIVATIVE_NOTE_LIMIT) -> list[str]:
+    notes: list[str] = []
+    for fact in facts[:limit]:
+        opt_type = "C" if fact["type"] == "看涨" else "P"
+        contract = f"{opt_type} {fact['strike']} {str(fact['expiry']).replace('/', '-')}"
+        notes.append(
+            f"{fact['time']} {fact['side']}{fact['type']} {contract}，量 {fmt_num(fact['volume_num'])}，额 {fmt_money(fact['turnover_num'], fact['currency'])}"
+        )
+    return notes
+
+
 def card_priority_score(
     group: dict[str, Any],
     quote: dict[str, Any],
@@ -752,13 +802,21 @@ def card_priority_score(
         top = derivative_facts[0]
         reasons.append(f"衍生品异动最大金额 {fmt_money(top['turnover_num'], top['currency'])}")
     if relevant_news:
-        score += 1.0
-        reasons.append("有强相关新闻")
+        strong_news_count = sum(1 for item in relevant_news if item.get("relevance") == "强相关")
+        if strong_news_count:
+            score += min(1.6, 0.8 + 0.25 * strong_news_count)
+            reasons.append(f"有强相关新闻 {strong_news_count} 条")
+        else:
+            score += 0.3
+            reasons.append("有近期背景新闻")
 
     bull = safe_float(sentiment.get("bullish"))
     bear = safe_float(sentiment.get("bearish"))
-    if safe_int(sentiment.get("post_count")) >= 10 and abs(bull - bear) >= 35:
-        score += 0.6
+    post_count = safe_int(sentiment.get("post_count"))
+    if post_count >= 20:
+        score += 0.4
+    if post_count >= 10 and abs(bull - bear) >= 25:
+        score += 0.7
         reasons.append(f"社区情绪偏向：看多 {bull:.0f}% / 看空 {bear:.0f}%")
 
     if not reasons:
@@ -780,6 +838,7 @@ def build_symbol_cards(
         quote = quotes.get(symbol, {})
         position_facts = build_position_facts(group, quote)
         signal = dashboard.get(symbol, {})
+        signal_fact = option_signal_fact(signal, position_direction(group))
         derivative_facts = extract_derivative_facts(derivatives.get(symbol, {}))
         relevant_news = filter_relevant_news(news.get(symbol, {}).get("items", []), generated_at)
         score, reasons = card_priority_score(
@@ -801,10 +860,13 @@ def build_symbol_cards(
                 "quote": quote,
                 "exposure": exposure_text(group),
                 "position_facts": position_facts,
-                "signal": option_signal_fact(signal, position_direction(group)),
+                "signal": signal_fact,
+                "option_summary": build_option_summary(signal_fact),
                 "derivative_facts": derivative_facts,
+                "top_derivative_notes": build_derivative_notes(derivative_facts),
                 "news": relevant_news,
                 "sentiment": sentiment.get(symbol, {}),
+                "community_views": sentiment.get(symbol, {}).get("views", [])[:COMMUNITY_VIEW_LIMIT],
                 "reasons": reasons,
                 "summary": "；".join(reasons[:2]),
             }
@@ -843,30 +905,11 @@ def render_position_rows(rows: list[dict[str, Any]]) -> str:
     return "".join(html_rows)
 
 
-def render_derivative_rows(facts: list[dict[str, Any]]) -> str:
-    if not facts:
+def render_derivative_notes(notes: list[str]) -> str:
+    if not notes:
         return '<div class="muted-block">无强相关衍生品异动</div>'
-    rows = []
-    for fact in facts:
-        opt_type = "C" if fact["type"] == "看涨" else "P"
-        rows.append(
-            f"""
-            <tr>
-              <td>{h(fact['time'])}</td>
-              <td>{h(fact['side'])}{h(fact['type'])}</td>
-              <td>{opt_type} {h(fact['strike'])}</td>
-              <td>{h(fact['expiry'].replace('/', '-'))}</td>
-              <td>{fmt_num(fact['volume_num'])}</td>
-              <td>{h(fmt_money(fact['turnover_num'], fact['currency']))}</td>
-            </tr>
-            """
-        )
-    return f"""
-      <table class="compact-table">
-        <thead><tr><th>时间</th><th>方向</th><th>型/行权</th><th>到期</th><th>量</th><th>额</th></tr></thead>
-        <tbody>{''.join(rows)}</tbody>
-      </table>
-    """
+    items = "".join(f"<li>{h(note)}</li>" for note in notes)
+    return f'<ul class="note-list derivative-note-list">{items}</ul>'
 
 
 def render_news(items: list[dict[str, Any]], sentiment: dict[str, Any]) -> str:
@@ -874,17 +917,33 @@ def render_news(items: list[dict[str, Any]], sentiment: dict[str, Any]) -> str:
     if items:
         blocks.append("<ul class=\"news-list\">")
         for item in items:
+            relevance = item.get("relevance") or "新闻"
             blocks.append(
-                f'<li><a href="{h(item.get("url"))}">{h(item.get("title"))}</a><small>{h(item.get("publish_time"))}</small></li>'
+                f'<li><span class="news-tag">{h(relevance)}</span><a href="{h(item.get("url"))}">{h(item.get("title"))}</a><small>{h(item.get("publish_time"))}</small></li>'
             )
         blocks.append("</ul>")
+    else:
+        blocks.append('<div class="muted-block">新闻未返回强相关内容</div>')
+
     bull = safe_float(sentiment.get("bullish"))
     bear = safe_float(sentiment.get("bearish"))
+    neutral = safe_float(sentiment.get("neutral"))
     post_count = safe_int(sentiment.get("post_count"))
-    if post_count >= 10 and abs(bull - bear) >= 35:
-        blocks.append(f'<div class="sentiment-line">社区讨论：看多 {bull:.0f}% / 看空 {bear:.0f}% / 样本 {post_count} 条</div>')
-    if not blocks:
-        return '<div class="muted-block">无强相关新闻或社区偏向</div>'
+    if post_count > 0:
+        blocks.append(
+            f'<div class="sentiment-line">社区讨论：看多 {bull:.0f}% / 看空 {bear:.0f}% / 中性 {neutral:.0f}% / 样本 {post_count} 条</div>'
+        )
+        views = sentiment.get("views") or []
+        if views:
+            blocks.append('<ul class="community-list">')
+            for view in views[:COMMUNITY_VIEW_LIMIT]:
+                label = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}.get(view.get("label"), "讨论")
+                blocks.append(
+                    f'<li><span class="community-tag {h(view.get("label"))}">{h(label)}</span><p>{h(view.get("text"))}</p><small>{h(view.get("time"))}</small></li>'
+                )
+            blocks.append("</ul>")
+    else:
+        blocks.append('<div class="muted-block">社区暂无有效讨论</div>')
     return "".join(blocks)
 
 
@@ -899,16 +958,6 @@ def render_symbol_card(card: dict[str, Any]) -> str:
     if signal["strength"] in {"strong", "medium"}:
         badges.append(render_badge(f"期权{signal['strength']}"))
     reasons = "".join(f"<li>{h(reason)}</li>" for reason in card["reasons"])
-    signal_cells = "".join(
-        [
-            render_metric("方向", h(signal["direction"])),
-            render_metric("异常分", "未返回" if signal["score"] is None else f"{signal['score']:.1f}"),
-            render_metric("P/C", "未返回" if signal["put_call_ratio"] is None else f"{signal['put_call_ratio']:.2f}"),
-            render_metric("成交变化", fmt_pct(signal["volume_change_pct"], 0)),
-            render_metric("匹配异动", str(signal["matched_unusual_count"])),
-            render_metric("集中大单", "是" if signal["is_concentrated"] else "否"),
-        ]
-    )
     return f"""
     <article class="symbol-card">
       <div class="symbol-top">
@@ -929,24 +978,21 @@ def render_symbol_card(card: dict[str, Any]) -> str:
         <ul>{reasons}</ul>
       </div>
       <div class="card-grid">
-        <section class="card-section span-2">
+        <section class="card-section position-section">
           <h3>持仓事实</h3>
           <table class="compact-table">
             <thead><tr><th>持仓</th><th>到期</th><th>DTE</th><th>数量</th><th>价内/价外</th><th>市值</th></tr></thead>
             <tbody>{render_position_rows(card['position_facts'])}</tbody>
           </table>
         </section>
-        <section class="card-section">
-          <h3>期权看板事实</h3>
-          <div class="signal-grid">{signal_cells}</div>
-        </section>
-        <section class="card-section span-2">
-          <h3>异动事实</h3>
-          {render_derivative_rows(card['derivative_facts'])}
-        </section>
-        <section class="card-section">
+        <section class="card-section news-section">
           <h3>新闻/社区</h3>
           {render_news(card['news'], card['sentiment'])}
+        </section>
+        <section class="card-section option-brief">
+          <h3>期权/异动摘要</h3>
+          <div class="option-summary">{h(card['option_summary'])}</div>
+          {render_derivative_notes(card['top_derivative_notes'])}
         </section>
       </div>
       <div class="summary-line">事实小结：{h(card['summary'])}</div>
@@ -1071,21 +1117,32 @@ def render_html(payload: dict[str, Any]) -> str:
     .level-低 {{ color: var(--green); }}
     .reason-box {{ background: #fffaf2; border: 1px solid #ead9bd; border-radius: 14px; padding: 12px 14px; }}
     .reason-box ul {{ margin: 6px 0 0; padding-left: 18px; }}
-    .card-grid {{ display: grid; grid-template-columns: 1.35fr .8fr; gap: 14px; margin-top: 14px; }}
+    .card-grid {{ display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(380px, .95fr); gap: 14px; margin-top: 14px; align-items: start; }}
     .card-section {{ border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #fff; }}
-    .span-2 {{ grid-column: span 1; }}
-    .signal-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+    .news-section {{ grid-row: span 2; background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%); }}
+    .option-brief {{ background: var(--soft); }}
+    .option-summary {{ color: var(--blue); font-weight: 800; line-height: 1.7; }}
+    .note-list {{ margin: 10px 0 0; padding-left: 18px; color: var(--muted); }}
+    .note-list li {{ margin-bottom: 6px; }}
     table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
     th {{ text-align: left; background: var(--soft); color: var(--muted); font-weight: 800; }}
     th, td {{ border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
     td small {{ display: block; margin-top: 2px; }}
     .summary-line {{ color: var(--muted); margin-top: 12px; font-size: 14px; }}
-    .news-list {{ margin: 0; padding-left: 18px; }}
-    .news-list li {{ margin-bottom: 8px; }}
+    .news-list, .community-list {{ margin: 0; padding: 0; list-style: none; }}
+    .news-list li {{ border-bottom: 1px solid var(--line); padding: 9px 0; }}
+    .news-list li:first-child {{ padding-top: 0; }}
+    .news-tag, .community-tag {{ display: inline-block; margin-right: 8px; border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 800; background: #e8eef9; color: var(--blue); }}
+    .community-list li {{ border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; margin-top: 8px; background: #fff; }}
+    .community-list p {{ margin: 6px 0 3px; color: var(--ink); }}
+    .community-tag.bullish {{ color: var(--red); background: #fff1f3; }}
+    .community-tag.bearish {{ color: var(--green); background: #eef9f3; }}
+    .community-tag.neutral {{ color: var(--muted); }}
     a {{ color: var(--blue); text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
-    .sentiment-line, .muted-block {{ border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); }}
+    .sentiment-line, .muted-block {{ border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); margin-top: 10px; }}
+    .news-list + .sentiment-line, .muted-block + .sentiment-line {{ margin-top: 12px; }}
     .appendix, .data-note {{ margin-top: 20px; padding: 18px; }}
     .section-head {{ display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }}
     .section-head h2 {{ font-size: 22px; }}
