@@ -15,6 +15,7 @@ backup_before_*/
 logs/
 __pycache__/
 *.pyc
+roundhill_app_tmp.js
 
 data/*
 !data/option_screen_underlying_snapshot.csv
