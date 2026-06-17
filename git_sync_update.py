@@ -101,9 +101,10 @@ def make_backup(mode: str) -> Path:
 
 
 def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[str]:
+    script = ROOT / "deadline_preopen_update.py" if args.deadline_bjt else ROOT / "daily_option_report.py"
     cmd = [
         str(PYTHON),
-        str(ROOT / "daily_option_report.py"),
+        str(script),
         "--mode",
         args.mode,
         "--pages",
@@ -119,6 +120,27 @@ def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[s
         "--html",
         str(ROOT / "reports" / "options_anomaly_report.html"),
     ]
+    if args.deadline_bjt:
+        if args.mode != "preopen":
+            raise RuntimeError("--deadline-bjt is only supported for --mode preopen.")
+        cmd = [
+            str(PYTHON),
+            str(script),
+            "--deadline-bjt",
+            args.deadline_bjt,
+            "--pages",
+            str(args.pages),
+            "--page-count",
+            str(args.page_count),
+            "--volume-page-count",
+            str(args.volume_page_count),
+            "--request-pause",
+            str(args.request_pause),
+            "--data-dir",
+            str(ROOT / "data"),
+            "--html",
+            str(ROOT / "reports" / "options_anomaly_report.html"),
+        ]
     if args.symbols:
         cmd.extend(["--symbols", *args.symbols])
         if args.merge_partial:
@@ -213,11 +235,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=2400)
     parser.add_argument("--allow-market-hours-preopen", action="store_true")
     parser.add_argument("--merge-partial", action="store_true")
+    parser.add_argument("--deadline-bjt", help="BJT hard deadline for preopen updates, e.g. 21:29:59")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.deadline_bjt and args.symbols:
+        raise RuntimeError("--deadline-bjt cannot be combined with --symbols.")
     pull_latest()
     check_opend()
     backup = make_backup(args.mode)

@@ -68,6 +68,15 @@ git_sync_update.cmd preopen
 git_sync_update.cmd intraday
 ```
 
+For preopen runs close to the US open, use the deadline-aware wrapper form:
+
+```cmd
+.venv-futu\Scripts\python.exe git_sync_update.py --mode preopen --deadline-bjt 21:29:59 --allow-market-hours-preopen
+```
+
+This writes local progress to `data\deadline_preopen_progress.json` after each fully completed symbol.
+If the deadline guard is reached, it stops before the next unsafe fetch and does not commit or push partial dashboard data.
+
 First-time publish on this computer:
 
 ```cmd
