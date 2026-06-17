@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -74,6 +75,24 @@ NEWS_DISPLAY_LIMIT = 4
 NEWS_BACKGROUND_FALLBACK_LIMIT = 2
 COMMUNITY_VIEW_LIMIT = 3
 DERIVATIVE_NOTE_LIMIT = 2
+COMMUNITY_FETCH_SIZE = 50
+COMMUNITY_RECENT_DAYS = 45
+
+COMMUNITY_ALIASES = {
+    "US.QCOM": ["QCOM", "QCOM.US", "Qualcomm", "高通"],
+    "US.NOK": ["NOK", "NOK.US", "Nokia", "诺基亚", "諾基亞"],
+    "US.IREN": ["IREN", "IREN.US", "Iris Energy"],
+    "US.NBIS": ["NBIS", "NBIS.US", "Nebius"],
+    "US.HOOD": ["HOOD", "HOOD.US", "Robinhood", "Robinhood Markets"],
+    "US.GFS": ["GFS", "GFS.US", "GlobalFoundries", "格芯"],
+    "US.CRWV": ["CRWV", "CRWV.US", "CoreWeave"],
+    "US.AMKR": ["AMKR", "AMKR.US", "Amkor"],
+    "US.FOTO": ["FOTO", "FOTO.US"],
+    "US.EUV": ["EUV", "EUV.US"],
+    "HK.01810": ["01810", "01810.HK", "小米"],
+    "HK.00981": ["00981", "00981.HK", "中芯国际", "中芯國際", "SMIC"],
+    "HK.00700": ["00700", "00700.HK", "腾讯", "騰訊", "Tencent"],
+}
 
 
 def now_bjt() -> datetime:
@@ -373,10 +392,58 @@ def normalize_time(value: Any) -> str:
         return str(value or "")
 
 
+def parse_publish_time(value: Any) -> datetime | None:
+    try:
+        ts = float(value)
+        if ts > 1e12:
+            ts /= 1000
+        return datetime.fromtimestamp(ts, timezone(timedelta(hours=8)))
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 def clean_text(value: Any) -> str:
     text = re.sub(r"<[^>]+>", " ", str(value or ""))
     text = html.unescape(text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def normalize_search_text(value: Any) -> str:
+    text = html.unescape(str(value or ""))
+    text = re.sub(r"<em>(.*?)</em>", r"\1", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = unicodedata.normalize("NFKC", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def community_aliases(symbol: str) -> list[str]:
+    aliases: list[str] = []
+    if symbol.startswith("US."):
+        ticker = symbol.split(".", 1)[1]
+        aliases.extend([ticker, f"{ticker}.US", symbol])
+    elif symbol.startswith("HK."):
+        code = symbol.split(".", 1)[1]
+        aliases.extend([code, f"{code}.HK", symbol])
+    else:
+        aliases.append(symbol)
+    aliases.extend(COMMUNITY_ALIASES.get(symbol, []))
+    aliases.extend([COMPANY_KEYWORDS.get(symbol, "")])
+    return [alias for alias in dict.fromkeys(a.strip() for a in aliases) if alias]
+
+
+def text_mentions_alias(text: str, alias: str) -> bool:
+    normalized_text = normalize_search_text(text)
+    normalized_alias = unicodedata.normalize("NFKC", alias).strip()
+    if not normalized_alias:
+        return False
+    if re.fullmatch(r"[A-Za-z0-9.]+", normalized_alias):
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(normalized_alias)}(?![A-Za-z0-9])"
+        return re.search(pattern, normalized_text, flags=re.IGNORECASE) is not None
+    return normalized_alias.lower() in normalized_text.lower()
+
+
+def community_post_matches_symbol(text: str, symbol: str) -> bool:
+    return any(text_mentions_alias(text, alias) for alias in community_aliases(symbol))
 
 
 def query_news(symbols: list[str]) -> dict[str, dict[str, Any]]:
@@ -405,14 +472,75 @@ def query_news(symbols: list[str]) -> dict[str, dict[str, Any]]:
     return results
 
 
-BULL_CUES = ["涨", "拉升", "突破", "看多", "买入", "利好", "强势", "beat", "bull", "buy", "long", "breakout", "upside", "surge"]
-BEAR_CUES = ["跌", "下跌", "回落", "看空", "卖出", "利空", "风险", "bear", "sell", "short", "downside", "miss", "dump"]
+BULL_CUES = [
+    "涨",
+    "上涨",
+    "拉升",
+    "突破",
+    "看多",
+    "做多",
+    "多头",
+    "买入",
+    "買入",
+    "利好",
+    "强势",
+    "強勢",
+    "看涨",
+    "看漲",
+    "call",
+    "calls",
+    "认购",
+    "認購",
+    "翻倍",
+    "金叉",
+    "空爆",
+    "逼空",
+    "short squeeze",
+    "beat",
+    "bull",
+    "buy",
+    "long",
+    "breakout",
+    "upside",
+    "surge",
+]
+BEAR_CUES = [
+    "跌",
+    "下跌",
+    "回落",
+    "看空",
+    "做空",
+    "空头",
+    "空軍",
+    "空军",
+    "卖出",
+    "賣出",
+    "利空",
+    "风险",
+    "風險",
+    "看跌",
+    "put",
+    "puts",
+    "认沽",
+    "認沽",
+    "死叉",
+    "跌破",
+    "沽空",
+    "bear",
+    "sell",
+    "short",
+    "downside",
+    "miss",
+    "dump",
+]
+BULL_CUE_WEIGHTS = {"空爆": 3, "逼空": 3, "short squeeze": 3, "翻倍": 2, "call": 2, "calls": 2}
+BEAR_CUE_WEIGHTS = {"做空": 2, "看跌": 2, "put": 2, "puts": 2, "死叉": 2, "跌破": 2}
 
 
 def classify_sentiment(text: str) -> str:
-    lowered = text.lower()
-    bull = sum(1 for cue in BULL_CUES if cue.lower() in lowered)
-    bear = sum(1 for cue in BEAR_CUES if cue.lower() in lowered)
+    lowered = unicodedata.normalize("NFKC", text).lower()
+    bull = sum(BULL_CUE_WEIGHTS.get(cue, 2 if len(cue) >= 3 else 1) for cue in BULL_CUES if cue.lower() in lowered)
+    bear = sum(BEAR_CUE_WEIGHTS.get(cue, 2 if len(cue) >= 3 else 1) for cue in BEAR_CUES if cue.lower() in lowered)
     if bull > bear:
         return "bullish"
     if bear > bull:
@@ -425,17 +553,51 @@ def query_sentiment(symbols: list[str]) -> dict[str, dict[str, Any]]:
     for symbol in symbols:
         keyword = COMPANY_KEYWORDS.get(symbol, symbol.split(".")[-1])
         try:
-            payload = fetch_json("stock_feed", {"keyword": keyword, "size": 30}, "futunn-comment-sentiment/0.0.2 (Skill)")
+            payload = fetch_json(
+                "community_search",
+                {"keyword": keyword, "size": COMMUNITY_FETCH_SIZE},
+                "futunn-comment-sentiment/0.0.2 (Skill)",
+            )
             items = payload.get("data") if payload.get("code") == 0 else []
         except Exception as exc:  # noqa: BLE001
-            results[symbol] = {"post_count": 0, "bullish": 0, "bearish": 0, "neutral": 0, "views": [], "error": f"{type(exc).__name__}: {exc}"}
+            results[symbol] = {
+                "post_count": 0,
+                "raw_count": 0,
+                "discarded_count": 0,
+                "stale_count": 0,
+                "bullish": 0,
+                "bearish": 0,
+                "neutral": 0,
+                "views": [],
+                "error": f"{type(exc).__name__}: {exc}",
+                "endpoint": "community_search",
+            }
             continue
 
         counts = {"bullish": 0, "bearish": 0, "neutral": 0}
         view_candidates: list[dict[str, str]] = []
+        raw_count = len(items or [])
+        discarded_count = 0
+        stale_count = 0
+        seen_ids: set[str] = set()
+        cutoff = now_bjt() - timedelta(days=COMMUNITY_RECENT_DAYS)
         for item in items or []:
+            post_id = str(item.get("id") or "")
+            if post_id and post_id in seen_ids:
+                discarded_count += 1
+                continue
+            seen_ids.add(post_id)
             text = clean_text(f"{item.get('title', '')} {item.get('desc', '')}")
             if len(text) < 8:
+                discarded_count += 1
+                continue
+            if not community_post_matches_symbol(text, symbol):
+                discarded_count += 1
+                continue
+            published_dt = parse_publish_time(item.get("publish_time"))
+            if published_dt is not None and published_dt < cutoff:
+                stale_count += 1
+                discarded_count += 1
                 continue
             label = classify_sentiment(text)
             counts[label] += 1
@@ -458,11 +620,15 @@ def query_sentiment(symbols: list[str]) -> dict[str, dict[str, Any]]:
         views = views[:COMMUNITY_VIEW_LIMIT]
         results[symbol] = {
             "post_count": total,
+            "raw_count": raw_count,
+            "discarded_count": discarded_count,
+            "stale_count": stale_count,
             "bullish": round(counts["bullish"] / total * 100, 1) if total else 0,
             "bearish": round(counts["bearish"] / total * 100, 1) if total else 0,
             "neutral": round(counts["neutral"] / total * 100, 1) if total else 0,
             "views": views,
             "error": "",
+            "endpoint": "community_search",
         }
         time.sleep(0.1)
     return results
@@ -929,9 +1095,13 @@ def render_news(items: list[dict[str, Any]], sentiment: dict[str, Any]) -> str:
     bear = safe_float(sentiment.get("bearish"))
     neutral = safe_float(sentiment.get("neutral"))
     post_count = safe_int(sentiment.get("post_count"))
+    raw_count = safe_int(sentiment.get("raw_count"))
+    stale_count = safe_int(sentiment.get("stale_count"))
     if post_count > 0:
         blocks.append(
-            f'<div class="sentiment-line">社区讨论：看多 {bull:.0f}% / 看空 {bear:.0f}% / 中性 {neutral:.0f}% / 样本 {post_count} 条</div>'
+            f'<div class="sentiment-line">社区讨论：看多 {bull:.0f}% / 看空 {bear:.0f}% / 中性 {neutral:.0f}% / 确认相关 {post_count} 条'
+            + (f' / 原始返回 {raw_count} 条' if raw_count else "")
+            + "</div>"
         )
         views = sentiment.get("views") or []
         if views:
@@ -943,7 +1113,13 @@ def render_news(items: list[dict[str, Any]], sentiment: dict[str, Any]) -> str:
                 )
             blocks.append("</ul>")
     else:
-        blocks.append('<div class="muted-block">社区暂无有效讨论</div>')
+        if raw_count:
+            detail = f"原始返回 {raw_count} 条，但无近期确认相关讨论"
+            if stale_count:
+                detail += f"；其中 {stale_count} 条过旧"
+        else:
+            detail = "社区暂无有效讨论"
+        blocks.append(f'<div class="muted-block">{h(detail)}</div>')
     return "".join(blocks)
 
 
