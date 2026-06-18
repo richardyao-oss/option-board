@@ -1,10 +1,10 @@
 {
-  "snapshot_time": "2026-06-18 09:48:02",
-  "snapshot_type": "complete",
-  "trade_date": "2026-06-17",
-  "snapshot_date": "2026-06-17",
-  "as_of_et": "2026-06-17 21:48:02 ET",
-  "as_of_bjt": "2026-06-18 09:48:02 BJT",
+  "snapshot_time": "2026-06-19 00:53:23",
+  "snapshot_type": "intraday",
+  "trade_date": "2026-06-18",
+  "snapshot_date": "2026-06-18",
+  "as_of_et": "2026-06-18 12:53:23 ET",
+  "as_of_bjt": "2026-06-19 00:53:23 BJT",
   "collection_scope": {
     "option_screen_turnover_sort": "turnover",
     "option_screen_turnover_pages": 1,
