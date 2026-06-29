@@ -27,13 +27,10 @@ class CoreLogicTests(unittest.TestCase):
         expected_order = [
             "风险指标",
             "超级平台",
-            "AI芯片",
-            "AI数据中心",
+            "AI硬件",
             "电力能源",
-            "AI应用",
-            "企业软件",
-            "金融科技",
-            "加密资产",
+            "AI时代软件",
+            "加密与金融",
             "中国科技",
         ]
         configured = rg.configured_theme_symbols()
@@ -54,11 +51,20 @@ class CoreLogicTests(unittest.TestCase):
         self.assertIn("期权抓取和看板写入前中止", str(caught.exception))
 
     def test_theme_grouping_only_uses_requested_symbols(self) -> None:
-        groups = rg.build_theme_report_groups(["US.NVDA", "US.AAPL"])
+        groups = rg.build_theme_report_groups([
+            "US.NVDA",
+            "US.MSFT",
+            "US.RDDT",
+            "US.AMD",
+            "US.COIN",
+            "US.OPEN",
+        ])
 
         self.assertEqual(groups, {
-            "超级平台": ["US.AAPL"],
-            "AI芯片": ["US.NVDA"],
+            "超级平台": ["US.MSFT", "US.NVDA"],
+            "AI硬件": ["US.AMD"],
+            "AI时代软件": ["US.RDDT"],
+            "加密与金融": ["US.COIN", "US.OPEN"],
         })
 
     def test_partial_refresh_preserves_current_watchlist_theme_scope(self) -> None:
@@ -70,8 +76,7 @@ class CoreLogicTests(unittest.TestCase):
 
         self.assertEqual(scan_symbols, ["US.NVDA"])
         self.assertEqual(report_groups, {
-            "超级平台": ["US.AAPL", "US.TSLA"],
-            "AI芯片": ["US.NVDA"],
+            "超级平台": ["US.AAPL", "US.NVDA", "US.TSLA"],
         })
 
     def test_build_report_groups_does_not_reintroduce_unrequested_symbols(self) -> None:
@@ -440,8 +445,8 @@ class CoreLogicTests(unittest.TestCase):
             text = html_path.read_text(encoding="utf-8")
 
         self.assertEqual(text.count('class="scan-row"'), 70)
-        self.assertEqual(text.count("class='theme-section'"), 10)
-        self.assertEqual(text.count("class='theme-directory-button'"), 10)
+        self.assertEqual(text.count("class='theme-section'"), 7)
+        self.assertEqual(text.count("class='theme-directory-button'"), 7)
         heading_positions = [
             text.index(f"<h2>{group_name}</h2>")
             for group_name in rg.THEME_REPORT_GROUPS
