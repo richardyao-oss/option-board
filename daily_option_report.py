@@ -244,13 +244,7 @@ def build_report_groups(args: argparse.Namespace) -> dict[str, list[str]]:
             print("[warn] Futu watchlist is empty; falling back to config/watchlist.json", file=sys.stderr)
             primary_symbols = load_file_watchlist(args.watchlist)
 
-    combined_symbols: list[str] = list(primary_symbols)
-    for symbols in rg.STATIC_REPORT_GROUPS.values():
-        combined_symbols.extend(symbols)
-
-    return {
-        rg.COMBINED_GROUP_NAME: remove_excluded_symbols(combined_symbols)
-    }
+    return rg.build_theme_report_groups(remove_excluded_symbols(primary_symbols))
 
 
 def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, list[str]]]:
@@ -259,12 +253,11 @@ def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, lis
         symbols = remove_excluded_symbols(explicit_symbols)
         if getattr(args, "merge_partial", False):
             report_groups = build_report_groups(args)
-            report_symbols = list(report_groups.get(rg.COMBINED_GROUP_NAME, []))
-            report_symbols.extend(stored_report_symbols(args.data_dir))
+            report_symbols = quote_symbols_from_groups(report_groups)
             report_symbols.extend(symbols)
-            report_groups[rg.COMBINED_GROUP_NAME] = remove_excluded_symbols(report_symbols)
+            report_groups = rg.build_theme_report_groups(remove_excluded_symbols(report_symbols))
             return symbols, report_groups
-        return symbols, {rg.COMBINED_GROUP_NAME: symbols}
+        return symbols, rg.build_theme_report_groups(symbols)
 
     report_groups = build_report_groups(args)
     scan_group_request = getattr(args, "scan_group_name", None)

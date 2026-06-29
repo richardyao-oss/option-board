@@ -3,11 +3,14 @@ from __future__ import annotations
 import csv
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 import daily_option_report as dor
 import dashboard_renderer
 import option_unusual_monitor as oum
+import report_groups as rg
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +23,72 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 
 
 class CoreLogicTests(unittest.TestCase):
+    def test_theme_configuration_covers_exactly_70_symbols_in_requested_order(self) -> None:
+        expected_order = [
+            "风险指标",
+            "超级平台",
+            "AI芯片",
+            "AI数据中心",
+            "电力能源",
+            "AI应用",
+            "企业软件",
+            "金融科技",
+            "加密资产",
+            "中国科技",
+        ]
+        configured = rg.configured_theme_symbols()
+
+        self.assertEqual(list(rg.THEME_REPORT_GROUPS), expected_order)
+        self.assertEqual(len(configured), 70)
+        self.assertEqual(len(set(configured)), 70)
+        self.assertEqual(
+            list(rg.build_theme_report_groups(list(reversed(configured)))),
+            expected_order,
+        )
+
+    def test_theme_grouping_rejects_unconfirmed_symbols(self) -> None:
+        with self.assertRaises(rg.UnmappedReportSymbolsError) as caught:
+            rg.build_theme_report_groups(["US.AAPL", "US.NEW"])
+
+        self.assertEqual(caught.exception.symbols, ["US.NEW"])
+        self.assertIn("期权抓取和看板写入前中止", str(caught.exception))
+
+    def test_theme_grouping_only_uses_requested_symbols(self) -> None:
+        groups = rg.build_theme_report_groups(["US.NVDA", "US.AAPL"])
+
+        self.assertEqual(groups, {
+            "超级平台": ["US.AAPL"],
+            "AI芯片": ["US.NVDA"],
+        })
+
+    def test_partial_refresh_preserves_current_watchlist_theme_scope(self) -> None:
+        args = Namespace(symbols=["US.NVDA"], merge_partial=True)
+        current_groups = rg.build_theme_report_groups(["US.AAPL", "US.TSLA"])
+
+        with mock.patch.object(dor, "build_report_groups", return_value=current_groups):
+            scan_symbols, report_groups = dor.choose_watchlist(args)
+
+        self.assertEqual(scan_symbols, ["US.NVDA"])
+        self.assertEqual(report_groups, {
+            "超级平台": ["US.AAPL", "US.TSLA"],
+            "AI芯片": ["US.NVDA"],
+        })
+
+    def test_build_report_groups_does_not_reintroduce_unrequested_symbols(self) -> None:
+        args = Namespace(watchlist_source="file", watchlist=Path("unused.json"))
+
+        with mock.patch.object(dor, "load_file_watchlist", return_value=["US.AAPL"]):
+            groups = dor.build_report_groups(args)
+
+        self.assertEqual(groups, {"超级平台": ["US.AAPL"]})
+
+    def test_double_click_update_wrapper_keeps_error_visible(self) -> None:
+        script = (ROOT / "git_sync_update.cmd").read_text(encoding="utf-8")
+
+        self.assertIn("The previous dashboard has been preserved.", script)
+        self.assertIn('type "%LOG%"', script)
+        self.assertIn("pause", script)
+
     def test_build_signals_includes_reversal_bonus(self) -> None:
         rows = [
             {
@@ -338,6 +407,54 @@ class CoreLogicTests(unittest.TestCase):
 
         self.assertGreaterEqual(text.count('class="scan-row"'), len(current_symbols))
         self.assertIn("unusual-matches", text)
+
+    def test_render_theme_sections_and_directory_cover_70_symbols_once(self) -> None:
+        agg_rows = read_csv(DATA / "option_screen_underlying_snapshot.csv")
+        signal_rows = read_csv(DATA / "daily_option_signals.csv")
+        contract_rows = read_csv(DATA / "option_screen_contract_snapshot.csv")
+        volume_rows = read_csv(DATA / "option_screen_volume_contract_snapshot.csv")
+        unusual_rows = read_csv(DATA / "option_unusual_snapshot.csv")
+        symbols = rg.configured_theme_symbols()
+        groups = rg.build_theme_report_groups(symbols)
+        status = {
+            "snapshot_date": "2026-06-26",
+            "trade_date": "2026-06-26",
+            "snapshot_type": "complete",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            html_path = Path(tmp) / "report.html"
+            dashboard_renderer.render_html(
+                html_path,
+                agg_rows,
+                signal_rows,
+                contract_rows,
+                "2026-06-26",
+                dor.trailing_weekdays("2026-06-26", 7),
+                volume_contract_rows=volume_rows,
+                option_unusual_rows=unusual_rows,
+                report_groups=groups,
+                quote_map={},
+                snapshot_status=status,
+            )
+            text = html_path.read_text(encoding="utf-8")
+
+        self.assertEqual(text.count('class="scan-row"'), 70)
+        self.assertEqual(text.count("class='theme-section'"), 10)
+        self.assertEqual(text.count("class='theme-directory-button'"), 10)
+        heading_positions = [
+            text.index(f"<h2>{group_name}</h2>")
+            for group_name in rg.THEME_REPORT_GROUPS
+        ]
+        self.assertEqual(heading_positions, sorted(heading_positions))
+        for symbol in symbols:
+            self.assertEqual(text.count(f'data-symbol="{symbol}"'), 1)
+        self.assertNotIn("theme-label", text)
+        self.assertIn("[data-theme-grid]", text)
+        self.assertNotIn("scrollIntoView", text)
+        self.assertIn("@media (hover: hover) and (pointer: fine) and (min-width: 981px)", text)
+        self.assertIn("@media (max-width: 980px)", text)
+        self.assertIn(".theme-directory { display: none; }", text)
 
 
 if __name__ == "__main__":

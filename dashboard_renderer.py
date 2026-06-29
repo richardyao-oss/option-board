@@ -180,18 +180,30 @@ def group_attr(symbol: str, groups: list[tuple[str, set[str]]]) -> str:
     return html.escape("|".join(groups_for_symbol(symbol, groups)), quote=True)
 
 
-def group_switch_html(groups: list[tuple[str, set[str]]]) -> str:
+def theme_section_id(index: int) -> str:
+    return f"theme-group-{index:02d}"
+
+
+def theme_directory_html(groups: list[tuple[str, set[str]]]) -> str:
     if len(groups) <= 1:
         return ""
-    buttons = []
-    for index, (name, symbols) in enumerate(groups):
-        active = " active" if index == 0 else ""
+    buttons: list[str] = []
+    for index, (name, _) in enumerate(groups, start=1):
+        target = theme_section_id(index)
         buttons.append(
-            f"<button class='group-button{active}' data-report-group='{html.escape(name, quote=True)}' type='button'>"
-            f"{html.escape(name)} <span>{len(symbols)}</span>"
+            f"<button class='theme-directory-button' data-theme-target='{target}' type='button'>"
+            f"<span>{index:02d}</span>{html.escape(name)}"
             "</button>"
         )
-    return f"<section class='group-switch' aria-label='report groups'>{''.join(buttons)}</section>"
+    return (
+        "<aside class='theme-directory' data-theme-directory aria-label='主题分组目录'>"
+        "<div class='theme-directory-sensor' aria-hidden='true'></div>"
+        "<nav class='theme-directory-panel'>"
+        "<p>主题目录</p>"
+        f"{''.join(buttons)}"
+        "</nav>"
+        "</aside>"
+    )
 
 
 def share_stack(call_share: float, put_share: float) -> str:
@@ -472,7 +484,8 @@ def render_daily_rows(
     )
     by_symbol_date = {(str(row.get("underlying", "")), str(row.get("snapshot_date", ""))): row for row in agg_rows}
     infos = daily_symbol_infos(agg_rows, signal_rows, snapshot_date, display_dates, all_group_symbols(groups))
-    rows_html = []
+    rows_by_group: dict[str, list[str]] = {name: [] for name, _ in groups}
+    loose_rows: list[str] = []
 
     def day_label(day: str) -> str:
         label = html.escape(day[5:])
@@ -537,7 +550,7 @@ def render_daily_rows(
         )
         unusual_matches = matched_unusual_rows(contracts, option_unusual_rows, snapshot_date, symbol, limit=10)
         unusual_html = unusual_match_table(unusual_matches, quote.get("stock_price"))
-        rows_html.append(f"""
+        card_html = f"""
         <article class="scan-row" data-symbol="{html.escape(symbol)}" data-groups="{group_attr(symbol, groups)}" data-direction="{html.escape(direction)}" data-score="{score:.2f}" data-total="{total}" data-pcr="{pcr:.4f}">
           <section class="identity">
             <div class="rank">{index:02d}</div>
@@ -560,12 +573,43 @@ def render_daily_rows(
               {contract_table(contracts, quote.get("stock_price"))}
             </aside>
           </section>
-          {unusual_html}
+{unusual_html}
         </article>
-        """)
+        """.strip()
+        memberships = groups_for_symbol(symbol, groups)
+        if memberships:
+            rows_by_group.setdefault(memberships[0], []).append(card_html)
+        else:
+            loose_rows.append(card_html)
 
-    if not rows_html:
-        rows_html.append("<article class='empty-board'><h2>当前分组没有可展示标的</h2><p>请确认自选分组或数据快照。</p></article>")
+    rendered_sections: list[str] = []
+    if groups:
+        for index, (group_name, _) in enumerate(groups, start=1):
+            group_rows = rows_by_group.get(group_name, [])
+            if not group_rows:
+                continue
+            section_id = theme_section_id(index)
+            rendered_sections.append(
+                f"<section class='theme-section' id='{section_id}' "
+                f"data-theme-section='{section_id}' data-theme-name='{html.escape(group_name, quote=True)}'>"
+                "<header class='theme-heading'>"
+                f"<span>{index:02d}</span><h2>{html.escape(group_name)}</h2>"
+                "</header>"
+                f"<div class='theme-grid' data-theme-grid>{''.join(group_rows)}</div>"
+                "</section>"
+            )
+    elif loose_rows:
+        rendered_sections.append(
+            "<section class='theme-section' data-theme-section='theme-group-01'>"
+            f"<div class='theme-grid' data-theme-grid>{''.join(loose_rows)}</div>"
+            "</section>"
+        )
+
+    if not rendered_sections:
+        rendered_sections.append(
+            "<article class='empty-board'><h2>当前分组没有可展示标的</h2>"
+            "<p>请确认自选分组或数据快照。</p></article>"
+        )
 
     current_agg = [row for row in agg_rows if str(row.get("snapshot_date", "")) == snapshot_date]
     summary = {
@@ -574,7 +618,7 @@ def render_daily_rows(
         "scanned": len({str(row.get("underlying", "")) for row in current_agg if row.get("underlying")}),
         "volume": sum(safe_int(row.get("total_volume")) for row in current_agg),
     }
-    return "".join(rows_html), summary
+    return "".join(rendered_sections), summary
 
 
 def render_intraday_rows(
@@ -695,9 +739,9 @@ def render_intraday_rows(
               {contract_table(contracts, quote.get("stock_price"))}
             </aside>
           </section>
-          {unusual_html}
+{unusual_html}
         </article>
-        """)
+        """.strip())
 
     if not cards:
         cards.append("<article class='empty-board'><h2>当前没有盘中快照</h2><p>盘中数据单独存储，不写入正式 7 日基线。</p></article>")
@@ -755,7 +799,7 @@ def render_html(
     )
     first_day = display_dates[0]
     last_day = display_dates[-1]
-    group_switch = group_switch_html(groups)
+    theme_directory = theme_directory_html(groups)
     status_type = str(snapshot_status.get("snapshot_type") or "complete").lower()
     status_label = "盘中快照" if status_type == "intraday" else "完整复盘"
     status_time = str(snapshot_status.get("as_of_et") or snapshot_status.get("snapshot_time") or "本地已存数据")
@@ -798,16 +842,11 @@ def render_html(
     h2 {{ margin: 0; font-size: 14px; line-height: 1.15; letter-spacing: 0; color: var(--ink); }}
     .meta {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; margin: 0; color: var(--muted); font-size: 12px; }}
     .meta span {{ white-space: nowrap; }}
-    .group-switch {{ display: flex; flex-wrap: wrap; gap: 0; background: transparent; border-bottom: 1px solid #dfe7f2; margin: 0; padding: 0 28px; }}
-    .group-button {{ border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); min-width: 0; padding: 8px 16px; cursor: pointer; text-align: left; font-size: 12px; transition: color .15s, border-color .15s; }}
-    .group-button:hover {{ color: var(--text); }}
-    .group-button span {{ color: var(--faint); font-size: 11px; margin-left: 4px; }}
-    .group-button.active {{ color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }}
-    .group-button.active span {{ color: var(--blue); }}
+    .theme-directory {{ display: none; }}
     .toolbar {{ display: flex; align-items: center; gap: 12px; position: static; background: transparent; padding: 12px 28px; margin: 0; border-bottom: 0; }}
     .search {{ width: 176px; border: 1px solid #d1dceb; border-radius: 7px; background: rgba(255,255,255,.92); padding: 7px 11px; outline: none; color: var(--text); font-size: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }}
     .search:focus {{ border-color: var(--blue); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }}
-    .search:focus, .seg button:focus-visible, .group-button:focus-visible {{ outline: none; }}
+    .search:focus, .seg button:focus-visible, .theme-directory-button:focus-visible {{ outline: none; }}
     .seg {{ display: inline-flex; gap: 3px; border: 0; background: transparent; }}
     .seg[data-sorter] {{ margin-left: auto; }}
     .seg button {{ border: 1px solid #d9e2ee; border-radius: 6px; background: rgba(255,255,255,.9); min-width: 0; padding: 6px 13px; cursor: pointer; color: var(--muted); font-size: 12px; transition: all .12s; }}
@@ -815,7 +854,14 @@ def render_html(
     .seg button.active {{ color: #fff; background: var(--blue); border-color: var(--blue); font-weight: 600; }}
     .seg[data-sorter] button.active {{ background: #173563; border-color: #173563; }}
     .count {{ text-align: right; color: var(--faint); font-size: 12px; white-space: nowrap; }}
-    .board {{ margin-top: 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 26px; overflow: visible; }}
+    .board {{ margin-top: 22px; overflow: visible; }}
+    .theme-section {{ scroll-margin-top: 112px; }}
+    .theme-section + .theme-section {{ margin-top: 34px; }}
+    .theme-heading {{ display: flex; align-items: center; gap: 9px; margin: 0 2px 14px; min-height: 24px; }}
+    .theme-heading::after {{ content: ""; flex: 1; height: 1px; margin-left: 6px; background: #d7e1ee; }}
+    .theme-heading span {{ color: #8190a7; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .08em; }}
+    .theme-heading h2 {{ color: #172a48; font-size: 15px; font-weight: 850; letter-spacing: .02em; }}
+    .theme-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 26px; }}
     .scan-row {{ position: relative; display: flex; flex-direction: column; border: 1px solid #dbe5f1; border-radius: 12px; background: rgba(255,255,255,.90); min-height: 520px; padding: 22px 22px 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(29, 55, 91, .08), 0 1px 0 rgba(255,255,255,.9) inset; content-visibility: auto; contain-intrinsic-size: 620px; }}
     .score-line {{ display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0 20px; min-height: 32px; }}
     .quote-metrics {{ display: flex; align-items: center; gap: 10px; color: #5f6f86; font-variant-numeric: tabular-nums; }}
@@ -896,10 +942,25 @@ def render_html(
     .unusual-direction.sell {{ color: var(--put); }}
     .contract-empty, .empty-board {{ color: #ced4da; border: 1px solid var(--hair); border-radius: 5px; background: var(--panel); padding: 14px; text-align: center; font-size: 12px; }}
     .hidden, .tab-panel.hidden {{ display: none; }}
+    .theme-directory.hidden {{ display: none !important; }}
     ::-webkit-scrollbar {{ width: 5px; height: 5px; }}
     ::-webkit-scrollbar-track {{ background: transparent; }}
     ::-webkit-scrollbar-thumb {{ background: #ced4da; border-radius: 3px; }}
     ::-webkit-scrollbar-thumb:hover {{ background: var(--hair-strong); }}
+    @media (hover: hover) and (pointer: fine) and (min-width: 981px) {{
+      .theme-directory {{ display: block; position: fixed; inset: 0 auto 0 0; width: 12px; z-index: 180; }}
+      .theme-directory-sensor {{ position: absolute; inset: 0; background: transparent; }}
+      .theme-directory-panel {{ position: absolute; left: 12px; top: 50%; width: 208px; padding: 14px 10px 10px; border: 1px solid rgba(173, 190, 213, .92); border-radius: 0 10px 10px 0; background: rgba(250, 252, 255, .97); box-shadow: 12px 18px 34px rgba(25, 51, 84, .16); backdrop-filter: blur(14px); transform: translate(calc(-100% - 18px), -50%); opacity: 0; pointer-events: none; transition: transform .18s ease, opacity .14s ease; }}
+      .theme-directory:hover .theme-directory-panel,
+      .theme-directory:focus-within .theme-directory-panel {{ transform: translate(0, -50%); opacity: 1; pointer-events: auto; }}
+      .theme-directory-panel > p {{ margin: 0 10px 8px; color: #7a899f; font-size: 11px; font-weight: 800; letter-spacing: .12em; }}
+      .theme-directory-button {{ display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #4f5f77; cursor: pointer; text-align: left; font-size: 13px; font-weight: 650; transition: background .12s ease, color .12s ease; }}
+      .theme-directory-button span {{ width: 21px; color: #9aa8ba; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }}
+      .theme-directory-button:hover {{ color: #122747; background: #edf3fb; }}
+      .theme-directory-button.active {{ color: #115fc4; background: #e7f0fc; font-weight: 800; }}
+      .theme-directory-button.active span {{ color: #3479d0; }}
+      .theme-directory-button.hidden {{ display: none; }}
+    }}
     @media (max-width: 980px) {{
       .sheet {{ padding: 14px; }}
       .top-stack {{ position: static; margin-left: 0; margin-right: 0; }}
@@ -907,7 +968,8 @@ def render_html(
       .meta {{ justify-content: flex-start; margin-top: 8px; }}
       .toolbar {{ flex-wrap: wrap; }}
       .count {{ text-align: left; }}
-      .board {{ grid-template-columns: 1fr; overflow: visible; padding-bottom: 8px; }}
+      .board {{ overflow: visible; padding-bottom: 8px; }}
+      .theme-grid {{ grid-template-columns: 1fr; }}
       .scan-row {{ min-width: 0; }}
       .card-body {{ grid-template-columns: 1fr; }}
       .rail-frame {{ width: 100%; min-height: 300px; }}
@@ -915,11 +977,15 @@ def render_html(
       .current-strip {{ height: calc(220px / var(--rail-scale)); }}
     }}
     @media (max-width: 1700px) and (min-width: 981px) {{
-      .board {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .theme-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      .theme-directory-panel {{ transition: none !important; }}
     }}
   </style>
 </head>
 <body>
+  {theme_directory}
   <main class="sheet">
     <section class="top-stack">
       <header class="mast">
@@ -932,8 +998,6 @@ def render_html(
           <span>更新时间：{html.escape(status_time)}</span>
         </p>
       </header>
-
-      {group_switch}
 
       <section class="toolbar" aria-label="daily filters">
         <input class="search" data-search="preopen" type="search" placeholder="搜索股票代码" autocomplete="off">
@@ -957,14 +1021,12 @@ def render_html(
   </main>
 
   <script>
-    const groupButtons = Array.from(document.querySelectorAll('[data-report-group]'));
-    let activeGroup = groupButtons.length ? (localStorage.getItem('option-report-group') || groupButtons[0].dataset.reportGroup || '') : '';
-    if (!groupButtons.length) {{
-      localStorage.removeItem('option-report-group');
-    }}
     const states = {{
       preopen: {{ direction: 'ALL', sort: 'total' }}
     }};
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-target]'));
+    let themeFrame = 0;
 
     function rowsFor(tab) {{
       return Array.from(document.querySelectorAll(`[data-board="${{tab}}"] [data-symbol]`));
@@ -974,33 +1036,79 @@ def render_html(
       container.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
     }}
 
-    function rowInGroup(row) {{
-      if (!groupButtons.length) return true;
-      if (!activeGroup) return true;
-      return (row.dataset.groups || '').split('|').includes(activeGroup);
+    function visibleThemeSections(tab) {{
+      return Array.from(document.querySelectorAll(`[data-board="${{tab}}"] [data-theme-section]`))
+        .filter((section) => !section.classList.contains('hidden'));
+    }}
+
+    function updateActiveTheme(tab = 'preopen') {{
+      const sections = visibleThemeSections(tab);
+      if (!sections.length) {{
+        themeButtons.forEach((button) => button.classList.remove('active'));
+        return;
+      }}
+      const topStack = document.querySelector('.top-stack');
+      const threshold = (topStack ? topStack.getBoundingClientRect().height : 0) + 28;
+      let current = sections[0];
+      sections.forEach((section) => {{
+        if (section.getBoundingClientRect().top <= threshold) current = section;
+      }});
+      themeButtons.forEach((button) => {{
+        button.classList.toggle('active', button.dataset.themeTarget === current.id);
+      }});
+    }}
+
+    function scheduleActiveThemeUpdate() {{
+      if (themeFrame) return;
+      themeFrame = requestAnimationFrame(() => {{
+        themeFrame = 0;
+        updateActiveTheme();
+      }});
+    }}
+
+    function refreshThemeSections(tab) {{
+      let visibleSections = 0;
+      document.querySelectorAll(`[data-board="${{tab}}"] [data-theme-section]`).forEach((section) => {{
+        const hasVisibleRows = Array.from(section.querySelectorAll('[data-symbol]'))
+          .some((row) => !row.classList.contains('hidden'));
+        section.classList.toggle('hidden', !hasVisibleRows);
+        const button = document.querySelector(`[data-theme-target="${{section.id}}"]`);
+        if (button) button.classList.toggle('hidden', !hasVisibleRows);
+        if (hasVisibleRows) visibleSections += 1;
+      }});
+      const directory = document.querySelector('[data-theme-directory]');
+      if (directory) directory.classList.toggle('hidden', visibleSections === 0);
+      scheduleActiveThemeUpdate();
     }}
 
     function refreshRows(tab) {{
       const search = document.querySelector(`[data-search="${{tab}}"]`);
       const query = search.value.trim().toUpperCase();
       let visible = 0;
-      let total = 0;
-      rowsFor(tab).forEach((row) => {{
+      const rows = rowsFor(tab);
+      rows.forEach((row) => {{
         const symbol = row.dataset.symbol.toUpperCase();
         const direction = row.dataset.direction;
-        const groupMatched = rowInGroup(row);
-        if (groupMatched) total += 1;
-        const matched = groupMatched && (!query || symbol.includes(query)) && (states[tab].direction === 'ALL' || direction === states[tab].direction);
+        const matched = (!query || symbol.includes(query))
+          && (states[tab].direction === 'ALL' || direction === states[tab].direction);
         row.classList.toggle('hidden', !matched);
         if (matched) visible += 1;
       }});
       document.querySelector(`[data-visible-count="${{tab}}"]`).textContent = visible;
-      document.querySelector(`[data-total-count="${{tab}}"]`).textContent = total;
+      document.querySelector(`[data-total-count="${{tab}}"]`).textContent = rows.length;
+      refreshThemeSections(tab);
     }}
 
     function sortRows(tab) {{
-      const board = document.querySelector(`[data-board="${{tab}}"]`);
-      rowsFor(tab).sort((a, b) => Number(b.dataset[states[tab].sort]) - Number(a.dataset[states[tab].sort])).forEach((row) => board.appendChild(row));
+      document.querySelectorAll(`[data-board="${{tab}}"] [data-theme-grid]`).forEach((grid) => {{
+        Array.from(grid.children)
+          .filter((row) => row.matches('[data-symbol]'))
+          .sort((a, b) => {{
+            const delta = Number(b.dataset[states[tab].sort]) - Number(a.dataset[states[tab].sort]);
+            return delta || a.dataset.symbol.localeCompare(b.dataset.symbol);
+          }})
+          .forEach((row) => grid.appendChild(row));
+      }});
       refreshRows(tab);
     }}
 
@@ -1037,22 +1145,25 @@ def render_html(
       input.addEventListener('input', () => refreshRows(input.dataset.search));
     }});
 
-    groupButtons.forEach((button) => {{
+    themeButtons.forEach((button) => {{
       button.addEventListener('click', () => {{
-        activeGroup = button.dataset.reportGroup;
-        groupButtons.forEach((item) => item.classList.toggle('active', item === button));
-        localStorage.setItem('option-report-group', activeGroup);
-        refreshRows('preopen');
+        const section = document.getElementById(button.dataset.themeTarget);
+        if (!section || section.classList.contains('hidden')) return;
+        const topStack = document.querySelector('.top-stack');
+        const topOffset = (topStack ? topStack.getBoundingClientRect().height : 0) + 14;
+        const targetTop = section.getBoundingClientRect().top + window.scrollY - topOffset;
+        window.scrollTo({{
+          top: Math.max(0, targetTop),
+          behavior: reducedMotion.matches ? 'auto' : 'smooth'
+        }});
       }});
     }});
 
-    if (groupButtons.length) {{
-      const selected = groupButtons.find((button) => button.dataset.reportGroup === activeGroup) || groupButtons[0];
-      activeGroup = selected.dataset.reportGroup;
-      groupButtons.forEach((button) => button.classList.toggle('active', button === selected));
-    }}
+    window.addEventListener('scroll', scheduleActiveThemeUpdate, {{ passive: true }});
+    window.addEventListener('resize', scheduleActiveThemeUpdate);
     sortRows('preopen');
     requestAnimationFrame(scrollWeekStripsToLatest);
+    requestAnimationFrame(updateActiveTheme);
   </script>
 </body>
 </html>"""

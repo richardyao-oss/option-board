@@ -1,3 +1,4 @@
 @echo off
 cd /d "%~dp0"
-".venv-futu\Scripts\python.exe" ".\git_sync_update.py" --mode intraday
+call "%~dp0git_sync_update.cmd" intraday
+exit /b %ERRORLEVEL%

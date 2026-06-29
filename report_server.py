@@ -20,7 +20,7 @@ REPORT_PATH = ROOT / "reports" / "options_anomaly_report.html"
 HOST = "127.0.0.1"
 PORT = 8765
 LOG_PATH = ROOT / "reports" / "report_server.log"
-SERVER_VERSION = "2026-06-06-report-alias"
+SERVER_VERSION = "2026-06-29-theme-groups"
 
 UPDATE_CONFIG = {
     "intraday": {
@@ -80,9 +80,16 @@ def run_update(kind: str) -> dict[str, object]:
     )
     ok = proc.returncode == 0
     name = str(config["name"])
+    error_detail = (proc.stderr or proc.stdout).strip()
+    if len(error_detail) > 800:
+        error_detail = error_detail[-800:]
     return {
         "ok": ok,
-        "message": f"{name} completed and pushed to Git." if ok else f"{name} failed. Check OpenD, Git status, and network.",
+        "message": (
+            f"{name} completed and pushed to Git."
+            if ok
+            else f"{name} failed: {error_detail or 'no error detail returned'}"
+        ),
         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "elapsed_seconds": round(time.time() - started, 1),
         "computer": socket.gethostname(),
