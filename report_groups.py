@@ -20,10 +20,7 @@ SOFTWARE_SYMBOLS = [
     "US.CRM",
     "US.INTU",
     "US.CRWD",
-    "US.VEEV",
     "US.PANW",
-    "US.ADSK",
-    "US.WDAY",
     "US.GWRE",
     "US.DDOG",
     "US.FICO",
@@ -33,7 +30,6 @@ SOFTWARE_SYMBOLS = [
     "US.TEAM",
     "US.GFS",
     "US.NOK",
-    "US.AEHR",
 ]
 
 STATIC_REPORT_GROUPS = {
