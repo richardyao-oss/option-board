@@ -1,11 +1,14 @@
 {
-  "snapshot_time": "2026-06-30 19:00:49",
+  "snapshot_time": "2026-06-30 19:29:02",
   "snapshot_type": "complete",
   "trade_date": "2026-06-29",
   "snapshot_date": "2026-06-29",
-  "as_of_et": "2026-06-30 07:00:49 ET",
-  "as_of_bjt": "2026-06-30 19:00:49 BJT",
+  "as_of_et": "2026-06-30 07:29:02 ET",
+  "as_of_bjt": "2026-06-30 19:29:02 BJT",
   "collection_scope": {
+    "watchlist_source": "dashboard_config",
+    "dashboard_config_symbol_count": 70,
+    "scan_symbol_count": 4,
     "option_screen_turnover_sort": "turnover",
     "option_screen_turnover_pages": 1,
     "option_screen_turnover_page_count": 200,
@@ -17,6 +20,6 @@
     "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
     "option_unusual_source": "get_derivative_unusual(option_unusual)",
     "option_unusual_time_range_days": 1,
-    "partial_merge": false
+    "partial_merge": true
   }
 }
