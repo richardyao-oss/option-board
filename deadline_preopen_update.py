@@ -161,11 +161,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Deadline-aware preopen option dashboard update.")
     parser.add_argument("--deadline-bjt", required=True, help="BJT deadline, e.g. 21:29:59 or YYYY-MM-DD HH:MM:SS")
     parser.add_argument("--snapshot-date")
-    parser.add_argument("--watchlist-source", choices=["file", "futu-user"], default="file")
-    parser.add_argument("--watchlist", type=Path, default=Path("config/watchlist.json"))
-    parser.add_argument("--group-type", default="CUSTOM")
-    parser.add_argument("--group-name", default="To be A8")
-    parser.add_argument("--include-system-groups", action="store_true")
     parser.add_argument("--pages", type=int, default=1)
     parser.add_argument("--page-count", type=int, default=200)
     parser.add_argument("--volume-page-count", type=int, default=10)
@@ -188,7 +183,7 @@ def main() -> int:
     dor.ensure_preopen_collection_window(args.allow_market_hours_preopen)
     watchlist, report_groups = dor.choose_watchlist(args)
     snapshot_date = args.snapshot_date or dor.last_completed_us_trade_date().isoformat()
-    scope = dor.collection_scope(args)
+    scope = dor.collection_scope(args, watchlist)
     metadata = dor.collection_metadata(snapshot_date, "complete", scope)
     progress_path = args.data_dir / PROGRESS_FILE
     progress: dict[str, Any] = {

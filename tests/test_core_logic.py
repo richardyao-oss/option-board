@@ -9,6 +9,7 @@ from unittest import mock
 
 import daily_option_report as dor
 import dashboard_renderer
+import git_sync_update as gsu
 import option_unusual_monitor as oum
 import report_groups as rg
 
@@ -67,25 +68,49 @@ class CoreLogicTests(unittest.TestCase):
             "加密与金融": ["US.COIN", "US.OPEN"],
         })
 
-    def test_partial_refresh_preserves_current_watchlist_theme_scope(self) -> None:
+    def test_partial_refresh_preserves_full_dashboard_config_scope(self) -> None:
         args = Namespace(symbols=["US.NVDA"], merge_partial=True)
-        current_groups = rg.build_theme_report_groups(["US.AAPL", "US.TSLA"])
-
-        with mock.patch.object(dor, "build_report_groups", return_value=current_groups):
-            scan_symbols, report_groups = dor.choose_watchlist(args)
+        scan_symbols, report_groups = dor.choose_watchlist(args)
 
         self.assertEqual(scan_symbols, ["US.NVDA"])
-        self.assertEqual(report_groups, {
-            "超级平台": ["US.AAPL", "US.NVDA", "US.TSLA"],
-        })
+        self.assertEqual(report_groups, rg.THEME_REPORT_GROUPS)
 
-    def test_build_report_groups_does_not_reintroduce_unrequested_symbols(self) -> None:
-        args = Namespace(watchlist_source="file", watchlist=Path("unused.json"))
+    def test_build_report_groups_uses_independent_dashboard_config(self) -> None:
+        groups = dor.build_report_groups(Namespace())
 
-        with mock.patch.object(dor, "load_file_watchlist", return_value=["US.AAPL"]):
-            groups = dor.build_report_groups(args)
+        self.assertEqual(groups, rg.THEME_REPORT_GROUPS)
 
-        self.assertEqual(groups, {"超级平台": ["US.AAPL"]})
+    def test_full_refresh_scans_all_configured_symbols_without_futu_watchlist(self) -> None:
+        scan_symbols, report_groups = dor.choose_watchlist(
+            Namespace(symbols=None, scan_group_name=None)
+        )
+
+        self.assertEqual(set(scan_symbols), set(rg.configured_theme_symbols()))
+        self.assertEqual(len(scan_symbols), 70)
+        self.assertEqual(report_groups, rg.THEME_REPORT_GROUPS)
+
+    def test_git_sync_full_update_does_not_pass_futu_watchlist_arguments(self) -> None:
+        args = Namespace(
+            deadline_bjt=None,
+            mode="intraday",
+            pages=1,
+            page_count=200,
+            volume_page_count=10,
+            request_pause=3.8,
+            symbols=None,
+            merge_partial=False,
+            snapshot_date=None,
+            allow_market_hours_preopen=False,
+            timeout=2400,
+        )
+        completed = mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(gsu.subprocess, "run", return_value=completed) as run:
+            gsu.run_report_update(args)
+
+        command = run.call_args.args[0]
+        self.assertNotIn("--watchlist-source", command)
+        self.assertNotIn("--group-name", command)
 
     def test_double_click_update_wrapper_keeps_error_visible(self) -> None:
         script = (ROOT / "git_sync_update.cmd").read_text(encoding="utf-8")

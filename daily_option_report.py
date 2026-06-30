@@ -3,7 +3,8 @@
 Daily options anomaly report.
 
 Safe by design: uses option screen snapshots only and never calls historical
-K-line APIs. It can load symbols from a local file or from Futu user watchlists.
+K-line APIs. The dashboard watchlist is maintained independently in
+report_groups.py.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import csv
 import json
 import os
 import sys
-import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -149,64 +149,8 @@ def safe_int(value: Any) -> int:
         return 0
 
 
-def load_file_watchlist(path: Path) -> list[str]:
-    return osm.load_watchlist(path)
-
-
-def load_futu_watchlist(group_type: str = "CUSTOM", include_system: bool = False, group_name: str | None = None) -> list[str]:
-    osm.prepare_futu_import_environment()
-    from futu import RET_OK, UserSecurityGroupType
-
-    type_map = {
-        "ALL": UserSecurityGroupType.ALL,
-        "CUSTOM": UserSecurityGroupType.CUSTOM,
-        "SYSTEM": UserSecurityGroupType.SYSTEM,
-    }
-    group_enum = type_map.get(group_type.upper(), UserSecurityGroupType.CUSTOM)
-    ctx = osm.create_quote_context()
-    codes: set[str] = set()
-    try:
-        ret, groups = ctx.get_user_security_group(group_enum)
-        if ret != RET_OK:
-            raise RuntimeError(f"get_user_security_group failed: {groups}")
-        if groups is None or groups.empty:
-            return []
-        matched_group = False
-        for _, group in groups.iterrows():
-            actual_group_name = str(group.get("group_name", ""))
-            actual_type = str(group.get("group_type", ""))
-            if not include_system and actual_type.upper() == "SYSTEM":
-                continue
-            if group_name and actual_group_name.strip().casefold() != group_name.strip().casefold():
-                continue
-            matched_group = True
-            ret, securities = ctx.get_user_security(actual_group_name)
-            if ret != RET_OK:
-                print(f"[warn] get_user_security({actual_group_name}) failed: {securities}", file=sys.stderr)
-                continue
-            if securities is None or securities.empty:
-                continue
-            for _, item in securities.iterrows():
-                code = str(item.get("code", "")).upper()
-                stock_type = str(item.get("stock_type", "")).upper()
-                if code.startswith("US.") and stock_type in {"", "STOCK", "ETF"}:
-                    codes.add(code)
-            time.sleep(0.2)
-        if group_name and not matched_group:
-            available = ", ".join(str(row.get("group_name", "")) for _, row in groups.iterrows())
-            raise RuntimeError(f"Futu watchlist group not found: {group_name}. Available groups: {available}")
-    finally:
-        ctx.close()
-    return sorted(codes)
-
-
 def unique_symbols(symbols: list[str]) -> list[str]:
     return sorted({str(symbol).upper() for symbol in symbols if str(symbol).strip()})
-
-
-def remove_excluded_symbols(symbols: list[str]) -> list[str]:
-    excluded = {str(symbol).upper() for symbol in getattr(rg, "LOW_LIQUIDITY_EXCLUDED_SYMBOLS", set())}
-    return [symbol for symbol in unique_symbols(symbols) if symbol not in excluded]
 
 
 def stored_report_symbols(data_dir: Path) -> list[str]:
@@ -232,30 +176,17 @@ def resolve_group_name(name: str, report_groups: dict[str, list[str]]) -> str:
 
 
 def build_report_groups(args: argparse.Namespace) -> dict[str, list[str]]:
-    if args.watchlist_source == "file":
-        primary_symbols = load_file_watchlist(args.watchlist)
-    else:
-        primary_symbols = load_futu_watchlist(
-            group_type=args.group_type,
-            include_system=args.include_system_groups,
-            group_name=args.group_name,
-        )
-        if not primary_symbols:
-            print("[warn] Futu watchlist is empty; falling back to config/watchlist.json", file=sys.stderr)
-            primary_symbols = load_file_watchlist(args.watchlist)
-
-    return rg.build_theme_report_groups(remove_excluded_symbols(primary_symbols))
+    del args
+    return rg.build_theme_report_groups(rg.configured_theme_symbols())
 
 
 def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, list[str]]]:
     explicit_symbols = unique_symbols(getattr(args, "symbols", None) or [])
     if explicit_symbols:
-        symbols = remove_excluded_symbols(explicit_symbols)
+        symbols = explicit_symbols
         if getattr(args, "merge_partial", False):
             report_groups = build_report_groups(args)
-            report_symbols = quote_symbols_from_groups(report_groups)
-            report_symbols.extend(symbols)
-            report_groups = rg.build_theme_report_groups(remove_excluded_symbols(report_symbols))
+            rg.build_theme_report_groups(symbols)
             return symbols, report_groups
         return symbols, rg.build_theme_report_groups(symbols)
 
@@ -263,9 +194,9 @@ def choose_watchlist(args: argparse.Namespace) -> tuple[list[str], dict[str, lis
     scan_group_request = getattr(args, "scan_group_name", None)
     if scan_group_request:
         scan_group_name = resolve_group_name(scan_group_request, report_groups)
-        scan_symbols = remove_excluded_symbols(report_groups[scan_group_name])
+        scan_symbols = unique_symbols(report_groups[scan_group_name])
     else:
-        scan_symbols = remove_excluded_symbols([symbol for symbols in report_groups.values() for symbol in symbols])
+        scan_symbols = unique_symbols([symbol for symbols in report_groups.values() for symbol in symbols])
     return scan_symbols, report_groups
 
 
@@ -315,8 +246,12 @@ def write_snapshot_rows(
         replace_rows_for_key(path, columns, rows, "snapshot_date", snapshot_date)
 
 
-def collection_scope(args: argparse.Namespace) -> dict[str, Any]:
+def collection_scope(args: argparse.Namespace, watchlist: list[str] | None = None) -> dict[str, Any]:
+    configured_symbols = rg.configured_theme_symbols()
     return {
+        "watchlist_source": "dashboard_config",
+        "dashboard_config_symbol_count": len(configured_symbols),
+        "scan_symbol_count": len(watchlist) if watchlist is not None else len(configured_symbols),
         "option_screen_turnover_sort": "turnover",
         "option_screen_turnover_pages": int(args.pages),
         "option_screen_turnover_page_count": int(args.page_count),
@@ -627,13 +562,8 @@ def collection_metadata(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build daily option anomaly HTML report")
     parser.add_argument("--mode", choices=["preopen", "intraday"], default="preopen")
-    parser.add_argument("--watchlist-source", choices=["file", "futu-user"], default="file")
-    parser.add_argument("--watchlist", type=Path, default=Path("config/watchlist.json"))
-    parser.add_argument("--group-type", choices=["ALL", "CUSTOM", "SYSTEM"], default="CUSTOM")
-    parser.add_argument("--group-name", default=None)
     parser.add_argument("--scan-group-name", default=None)
     parser.add_argument("--symbols", nargs="+", default=None)
-    parser.add_argument("--include-system-groups", action="store_true")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--snapshot-date", default=None)
     parser.add_argument("--pages", type=int, default=1)
@@ -658,7 +588,7 @@ def main() -> int:
     daily_signal_path = args.data_dir / "daily_option_signals.csv"
     quote_snapshot_path = args.data_dir / "current_quote_snapshot.json"
     snapshot_status_path = args.data_dir / SNAPSHOT_STATUS_FILE
-    scope = collection_scope(args)
+    scope = collection_scope(args, watchlist)
 
     if args.mode == "intraday":
         snapshot_date = args.snapshot_date or current_us_trade_date().isoformat()

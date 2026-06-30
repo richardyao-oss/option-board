@@ -10,6 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import report_groups as rg
 from runtime_env import PYTHON, ROOT, clean_env_for_child, configure_runtime
 
 
@@ -145,15 +146,6 @@ def run_report_update(args: argparse.Namespace) -> subprocess.CompletedProcess[s
         cmd.extend(["--symbols", *args.symbols])
         if args.merge_partial:
             cmd.append("--merge-partial")
-    else:
-        cmd.extend([
-            "--watchlist-source",
-            "futu-user",
-            "--group-type",
-            "CUSTOM",
-            "--group-name",
-            args.group_name,
-        ])
     if args.snapshot_date:
         cmd.extend(["--snapshot-date", args.snapshot_date])
     if args.allow_market_hours_preopen:
@@ -174,7 +166,11 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def validate_outputs(expected_mode: str) -> tuple[str, str, int, int, int]:
+def validate_outputs(
+    expected_mode: str,
+    expected_symbols: list[str],
+    require_exact_symbols: bool,
+) -> tuple[str, str, int, int, int]:
     status_path = ROOT / "data" / "option_screen_snapshot_status.json"
     report_path = ROOT / "reports" / "options_anomaly_report.html"
     unusual_path = ROOT / "data" / "option_unusual_snapshot.csv"
@@ -201,6 +197,18 @@ def validate_outputs(expected_mode: str) -> tuple[str, str, int, int, int]:
         raise RuntimeError(f"No aggregate rows for {snapshot_date}.")
     if not contract_rows:
         raise RuntimeError(f"No contract rows for {snapshot_date}.")
+    actual_symbols = {str(row.get("underlying", "")).upper() for row in agg_rows}
+    expected_symbol_set = {str(symbol).upper() for symbol in expected_symbols}
+    missing_symbols = sorted(expected_symbol_set - actual_symbols)
+    extra_symbols = sorted(actual_symbols - expected_symbol_set)
+    if missing_symbols:
+        raise RuntimeError(
+            f"Missing aggregate symbols for {snapshot_date}: {', '.join(missing_symbols)}"
+        )
+    if require_exact_symbols and extra_symbols:
+        raise RuntimeError(
+            f"Unexpected aggregate symbols for {snapshot_date}: {', '.join(extra_symbols)}"
+        )
 
     html_text = report_path.read_text(encoding="utf-8", errors="ignore")
     if snapshot_date not in html_text:
@@ -227,7 +235,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=["preopen", "intraday"], required=True)
     parser.add_argument("--snapshot-date")
     parser.add_argument("--symbols", nargs="+")
-    parser.add_argument("--group-name", default="To be A8")
     parser.add_argument("--pages", type=int, default=1)
     parser.add_argument("--page-count", type=int, default=200)
     parser.add_argument("--volume-page-count", type=int, default=10)
@@ -243,6 +250,8 @@ def main() -> int:
     args = parse_args()
     if args.deadline_bjt and args.symbols:
         raise RuntimeError("--deadline-bjt cannot be combined with --symbols.")
+    if args.symbols:
+        rg.build_theme_report_groups(args.symbols)
     pull_latest()
     check_opend()
     backup = make_backup(args.mode)
@@ -256,7 +265,12 @@ def main() -> int:
     if proc.returncode != 0:
         raise RuntimeError(f"daily_option_report.py failed with exit code {proc.returncode}.")
 
-    snapshot_date, snapshot_type, agg_count, contract_count, unusual_count = validate_outputs(args.mode)
+    expected_symbols = args.symbols or rg.configured_theme_symbols()
+    snapshot_date, snapshot_type, agg_count, contract_count, unusual_count = validate_outputs(
+        args.mode,
+        expected_symbols,
+        require_exact_symbols=not bool(args.symbols),
+    )
     print(
         f"Validated {snapshot_date} {snapshot_type}: "
         f"{agg_count} symbols, {contract_count} contracts, "

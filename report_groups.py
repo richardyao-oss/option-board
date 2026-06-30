@@ -1,18 +1,6 @@
 from __future__ import annotations
 
-PRIMARY_GROUP_NAME = "To be A8"
 COMBINED_GROUP_NAME = "All"
-
-LOW_LIQUIDITY_EXCLUDED_SYMBOLS = {
-    "US.XYF",
-    "US.AIFC",
-    "US.REMX",
-    "US.CLBT",
-    "US.KC",
-    "US.MANH",
-    "US.FICO",
-    "US.GWRE",
-}
 
 THEME_REPORT_GROUPS: dict[str, list[str]] = {
     "风险指标": [
