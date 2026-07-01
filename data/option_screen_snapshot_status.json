@@ -1,10 +1,10 @@
 {
-  "snapshot_time": "2026-07-01 00:32:21",
-  "snapshot_type": "intraday",
+  "snapshot_time": "2026-07-01 10:49:35",
+  "snapshot_type": "complete",
   "trade_date": "2026-06-30",
   "snapshot_date": "2026-06-30",
-  "as_of_et": "2026-06-30 12:32:21 ET",
-  "as_of_bjt": "2026-07-01 00:32:21 BJT",
+  "as_of_et": "2026-06-30 22:49:35 ET",
+  "as_of_bjt": "2026-07-01 10:49:35 BJT",
   "collection_scope": {
     "watchlist_source": "dashboard_config",
     "dashboard_config_symbol_count": 70,
