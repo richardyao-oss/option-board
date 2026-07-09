@@ -1,10 +1,10 @@
 {
-  "snapshot_time": "2026-07-08 20:16:27",
+  "snapshot_time": "2026-07-09 20:22:09",
   "snapshot_type": "complete",
-  "trade_date": "2026-07-07",
-  "snapshot_date": "2026-07-07",
-  "as_of_et": "2026-07-08 08:16:27 ET",
-  "as_of_bjt": "2026-07-08 20:16:27 BJT",
+  "trade_date": "2026-07-08",
+  "snapshot_date": "2026-07-08",
+  "as_of_et": "2026-07-09 08:22:09 ET",
+  "as_of_bjt": "2026-07-09 20:22:09 BJT",
   "collection_scope": {
     "watchlist_source": "dashboard_config",
     "dashboard_config_symbol_count": 70,
