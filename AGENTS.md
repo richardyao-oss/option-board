@@ -61,6 +61,8 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - During long collection, poll about every 55 seconds. Suppress empty poll payloads and use only `仍在抓取，无错误。` unless the phase changes, an error occurs, or collection finishes.
 - Read raw CSV rows only when the compact report identifies missing or ambiguous evidence that cannot be judged from its bounded structures, contracts, and contradictions.
 - The final answer is bounded to one core conclusion, at most three group judgments, at most five symbols in each A/B/C tier, data status, at most two limitations, and the dashboard link.
+- Give A-tier symbols more evidence: state the main structure, then at most three secondary structures or residual naked legs with expiry, strikes, side, volume/turnover when useful, V/OI and OI change, and why any contradiction is not strong enough to downgrade the symbol. Keep B- and C-tier symbols to one line each.
+- Preserve the compact payload. If an A-tier explanation needs residual-leg specifics that the compact report only aggregates, make one targeted local lookup for those legs; never dump or read back the full unusual-activity file for this expansion.
 
 ## Frontend Design
 
