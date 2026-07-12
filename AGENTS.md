@@ -53,6 +53,15 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
   8. Allow `unknown` or `suspected structure`; never force a bullish/bearish conclusion when order IDs, stock legs, opening/closing flags, or complete strategy legs are unavailable.
 - Summaries should rank A (clear structure/direction plus opening and size evidence), B (at least two independent supporting conditions without a strong contradiction), and C/downgraded (large activity but ambiguous, low V/OI, closing/rolling risk, incomplete structure, or conflicting evidence). Explain notable exclusions and contradictions.
 
+## Low-Token Complete Review Workflow
+
+- For `复盘某日数据`, first inspect the local snapshot status and Git state. If that date is already `complete`, the worktree is clean, and local `HEAD` matches its upstream, do not check OpenD or fetch again; run `dashboard_analysis.py --date YYYY-MM-DD --intent --top 15 --json` against local files.
+- If the date is not complete, run exactly one Git transaction update, then run the compact intent analysis. Do not perform exploratory duplicate fetches.
+- For project reviews, use the project-local workflow directly. Do not load the generic FutuAPI reference unless Richard asks a standalone API question.
+- During long collection, poll about every 55 seconds. Suppress empty poll payloads and use only `仍在抓取，无错误。` unless the phase changes, an error occurs, or collection finishes.
+- Read raw CSV rows only when the compact report identifies missing or ambiguous evidence that cannot be judged from its bounded structures, contracts, and contradictions.
+- The final answer is bounded to one core conclusion, at most three group judgments, at most five symbols in each A/B/C tier, data status, at most two limitations, and the dashboard link.
+
 ## Frontend Design
 
 - When Richard asks for frontend pages, HTML pages, dashboard visual redesigns, UI mockups, or visual prototypes, prefer the `huashu-design` skill as the design workflow and quality bar when it is available.
