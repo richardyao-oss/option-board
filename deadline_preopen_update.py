@@ -143,7 +143,7 @@ def collect_unusual_for_symbol(symbol: str, snapshot_date: str) -> list[dict[str
         watchlist=[symbol],
         snapshot_date=snapshot_date,
         request_pause=0,
-        time_range=1,
+        time_range=dor.COMPLETE_UNUSUAL_TIME_RANGE,
         language_id=0,
     )
     for warning in warnings:
@@ -184,7 +184,7 @@ def main() -> int:
     dor.ensure_preopen_collection_window(args.allow_market_hours_preopen)
     watchlist, report_groups = dor.choose_watchlist(args)
     snapshot_date = args.snapshot_date or dor.last_completed_us_trade_date().isoformat()
-    scope = dor.collection_scope(args, watchlist)
+    scope = dor.collection_scope(args, watchlist, dor.COMPLETE_UNUSUAL_TIME_RANGE)
     metadata = dor.collection_metadata(snapshot_date, "complete", scope)
     progress_path = args.data_dir / PROGRESS_FILE
     progress: dict[str, Any] = {

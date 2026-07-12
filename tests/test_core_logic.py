@@ -112,6 +112,23 @@ class CoreLogicTests(unittest.TestCase):
         self.assertNotIn("--watchlist-source", command)
         self.assertNotIn("--group-name", command)
 
+    def test_complete_review_uses_wider_unusual_window_than_intraday(self) -> None:
+        self.assertEqual(dor.INTRADAY_UNUSUAL_TIME_RANGE, 1)
+        self.assertEqual(dor.COMPLETE_UNUSUAL_TIME_RANGE, 3)
+        self.assertEqual(
+            dor.collection_scope(
+                Namespace(
+                    pages=1,
+                    page_count=200,
+                    volume_page_count=10,
+                    merge_partial=False,
+                ),
+                ["US.META"],
+                dor.COMPLETE_UNUSUAL_TIME_RANGE,
+            )["option_unusual_time_range_days"],
+            3,
+        )
+
     def test_double_click_update_wrapper_keeps_error_visible(self) -> None:
         script = (ROOT / "git_sync_update.cmd").read_text(encoding="utf-8")
 

@@ -70,6 +70,8 @@ INTRADAY_SIGNAL_COLUMNS = INTRADAY_META_COLUMNS + SIGNAL_COLUMNS
 SNAPSHOT_STATUS_FILE = "option_screen_snapshot_status.json"
 VOLUME_CONTRACT_SNAPSHOT_FILE = "option_screen_volume_contract_snapshot.csv"
 UNUSUAL_SNAPSHOT_FILE = "option_unusual_snapshot.csv"
+INTRADAY_UNUSUAL_TIME_RANGE = 1
+COMPLETE_UNUSUAL_TIME_RANGE = 3
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -246,7 +248,11 @@ def write_snapshot_rows(
         replace_rows_for_key(path, columns, rows, "snapshot_date", snapshot_date)
 
 
-def collection_scope(args: argparse.Namespace, watchlist: list[str] | None = None) -> dict[str, Any]:
+def collection_scope(
+    args: argparse.Namespace,
+    watchlist: list[str] | None = None,
+    unusual_time_range: int = INTRADAY_UNUSUAL_TIME_RANGE,
+) -> dict[str, Any]:
     configured_symbols = rg.configured_theme_symbols()
     return {
         "watchlist_source": "dashboard_config",
@@ -262,7 +268,7 @@ def collection_scope(args: argparse.Namespace, watchlist: list[str] | None = Non
         "pcr_basis": "volume_from_turnover_screen_rows",
         "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
         "option_unusual_source": "get_derivative_unusual(option_unusual)",
-        "option_unusual_time_range_days": 1,
+        "option_unusual_time_range_days": unusual_time_range,
         "partial_merge": bool(getattr(args, "merge_partial", False)),
     }
 
@@ -271,13 +277,14 @@ def collect_option_unusual_rows(
     watchlist: list[str],
     snapshot_date: str,
     request_pause: float,
+    time_range: int,
 ) -> list[dict[str, Any]]:
     try:
         rows, warnings, stats = oum.collect_unusual_rows_with_stats(
             watchlist=watchlist,
             snapshot_date=snapshot_date,
             request_pause=request_pause,
-            time_range=1,
+            time_range=time_range,
             language_id=0,
         )
     except Exception as exc:
@@ -589,7 +596,10 @@ def main() -> int:
     daily_signal_path = args.data_dir / "daily_option_signals.csv"
     quote_snapshot_path = args.data_dir / "current_quote_snapshot.json"
     snapshot_status_path = args.data_dir / SNAPSHOT_STATUS_FILE
-    scope = collection_scope(args, watchlist)
+    unusual_time_range = (
+        INTRADAY_UNUSUAL_TIME_RANGE if args.mode == "intraday" else COMPLETE_UNUSUAL_TIME_RANGE
+    )
+    scope = collection_scope(args, watchlist, unusual_time_range)
 
     if args.mode == "intraday":
         snapshot_date = args.snapshot_date or current_us_trade_date().isoformat()
@@ -609,7 +619,9 @@ def main() -> int:
             request_pause=args.request_pause,
             sort_by="volume",
         )
-        unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
+        unusual_rows = collect_option_unusual_rows(
+            watchlist, snapshot_date, args.request_pause, unusual_time_range
+        )
         aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
         write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
@@ -667,7 +679,9 @@ def main() -> int:
         request_pause=args.request_pause,
         sort_by="volume",
     )
-    unusual_rows = collect_option_unusual_rows(watchlist, snapshot_date, args.request_pause)
+    unusual_rows = collect_option_unusual_rows(
+        watchlist, snapshot_date, args.request_pause, unusual_time_range
+    )
     aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
 
     write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
