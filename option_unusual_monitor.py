@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from runtime_env import configure_runtime
 
@@ -46,6 +47,9 @@ UNUSUAL_PATTERN = re.compile(
     r"到期日为(?P<expiry>\d{4}/\d{1,2}/\d{1,2})",
     re.S,
 )
+
+BJT = ZoneInfo("Asia/Shanghai")
+ET = ZoneInfo("America/New_York")
 
 
 def safe_float(value: Any) -> float:
@@ -103,6 +107,19 @@ def split_records(content: str) -> list[str]:
     return records
 
 
+def event_belongs_to_us_trade_date(month: int, day: int, event_time: str, snapshot_date: str) -> bool:
+    target = datetime.strptime(snapshot_date, "%Y-%m-%d").date()
+    hour, minute = (int(part) for part in event_time.split(":"))
+    for year in (target.year - 1, target.year, target.year + 1):
+        try:
+            event_bjt = datetime(year, month, day, hour, minute, tzinfo=BJT)
+        except ValueError:
+            continue
+        if event_bjt.astimezone(ET).date() == target:
+            return True
+    return False
+
+
 def parse_unusual_content_with_stats(
     content: str,
     snapshot_date: str,
@@ -115,12 +132,21 @@ def parse_unusual_content_with_stats(
     excluded_neutral_examples: list[str] = []
     unparsed_count = 0
     excluded_neutral_count = 0
+    excluded_other_trade_date_count = 0
     for record in records:
         match = UNUSUAL_PATTERN.search(record)
         if not match:
             unparsed_count += 1
             if len(failed_examples) < failed_example_limit:
                 failed_examples.append(record)
+            continue
+        if not event_belongs_to_us_trade_date(
+            int(match.group("month")),
+            int(match.group("day")),
+            match.group("time"),
+            snapshot_date,
+        ):
+            excluded_other_trade_date_count += 1
             continue
         expiry = normalize_expiry(match.group("expiry"))
         option_type = normalize_option_type(match.group("option_kind"))
@@ -154,6 +180,7 @@ def parse_unusual_content_with_stats(
         "raw_records": len(records),
         "parsed_records": len(rows),
         "excluded_neutral_records": excluded_neutral_count,
+        "excluded_other_trade_date_records": excluded_other_trade_date_count,
         "unparsed_records": unparsed_count,
         "excluded_neutral_examples": excluded_neutral_examples,
         "failed_examples": failed_examples,
@@ -191,6 +218,7 @@ def collect_unusual_rows_with_stats(
         "raw_records": 0,
         "parsed_records": 0,
         "excluded_neutral_records": 0,
+        "excluded_other_trade_date_records": 0,
         "unparsed_records": 0,
         "excluded_neutral_examples": [],
         "failed_examples": [],
@@ -225,6 +253,7 @@ def collect_unusual_rows_with_stats(
             stats["raw_records"] += int(parse_stats["raw_records"])
             stats["parsed_records"] += int(parse_stats["parsed_records"])
             stats["excluded_neutral_records"] += int(parse_stats["excluded_neutral_records"])
+            stats["excluded_other_trade_date_records"] += int(parse_stats["excluded_other_trade_date_records"])
             stats["unparsed_records"] += int(parse_stats["unparsed_records"])
             for example in parse_stats["excluded_neutral_examples"]:
                 if len(stats["excluded_neutral_examples"]) < 10:
@@ -296,6 +325,7 @@ def main() -> int:
             "Parse stats: "
             f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
             f"{stats['excluded_neutral_records']} neutral excluded, "
+            f"{stats['excluded_other_trade_date_records']} other trade date excluded, "
             f"{stats['unparsed_records']} unparsed, "
             f"{stats['symbols_failed']} symbols failed"
         )

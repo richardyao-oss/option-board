@@ -152,6 +152,7 @@ def collect_unusual_for_symbol(symbol: str, snapshot_date: str) -> list[dict[str
         f"Option unusual {symbol}: "
         f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
         f"{stats['excluded_neutral_records']} neutral excluded, "
+        f"{stats['excluded_other_trade_date_records']} other trade date excluded, "
         f"{stats['unparsed_records']} unparsed"
     )
     return rows

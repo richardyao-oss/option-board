@@ -38,6 +38,21 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - P/C remains volume-based. Top-contract tables should show both volume and turnover.
 - `option_screen_snapshot_status.json` should keep non-destructive collection metadata: screen sort/page counts, P/C basis, Top10 basis, and unusual time range.
 
+## Complete Review Intent Analysis
+
+- When Richard says only “复盘几月几号数据” or equivalent, treat the date as the target US trading date, infer an omitted year from the current project/conversation context, run the full complete post-close review for the current dashboard watchlist, then analyze and summarize it with the option-trading intent model below. Ask about the year only when it is genuinely ambiguous; Richard does not need to repeat these instructions.
+- Interpret option activity as evidence about intent, not as a mechanical `CALL=bullish` / `PUT=bearish` rule. Separate the result into position action (open/close/roll/unknown), directional intent (bullish/bearish/neutral/unknown), volatility intent (long/short/unknown), time horizon, and confidence.
+- Apply the model in this order:
+  1. Keep only unusual trades whose BJT event time converts to the target US trading date.
+  2. Merge likely split executions so one parent order does not count as repeated confirmation.
+  3. Detect multi-leg structures before judging individual legs, including verticals, calendars/diagonals, straddles/strangles, risk reversals, butterflies/condors, and rolls when evidence supports them.
+  4. Infer opening, closing, or rolling with V/OI and, when later data exists, next-day OI change. V/OI alone is supporting evidence, not proof.
+  5. Treat BUY CALL / SELL PUT as usually bullish and BUY PUT / SELL CALL as usually bearish or upside-capping, but lower confidence when covered positions, hedges, or unseen spread legs could explain the trade.
+  6. Include moneyness and time to expiry to distinguish short-term event/gamma trades, swing positioning, LEAPS, stock substitution, and hedging.
+  7. Separate directional intent from volatility intent and cross-check IV behavior, P/C versus baseline, concentration, underlying price action, repeated expiries, and contradictory evidence.
+  8. Allow `unknown` or `suspected structure`; never force a bullish/bearish conclusion when order IDs, stock legs, opening/closing flags, or complete strategy legs are unavailable.
+- Summaries should rank A (clear structure/direction plus opening and size evidence), B (at least two independent supporting conditions without a strong contradiction), and C/downgraded (large activity but ambiguous, low V/OI, closing/rolling risk, incomplete structure, or conflicting evidence). Explain notable exclusions and contradictions.
+
 ## Frontend Design
 
 - When Richard asks for frontend pages, HTML pages, dashboard visual redesigns, UI mockups, or visual prototypes, prefer the `huashu-design` skill as the design workflow and quality bar when it is available.

@@ -360,6 +360,22 @@ class CoreLogicTests(unittest.TestCase):
         self.assertEqual(stats["unparsed_records"], 0)
         self.assertEqual(rows[0]["direction"], "BUY")
 
+    def test_option_unusual_parser_keeps_only_target_us_trade_date(self) -> None:
+        content = (
+            "7.9 01:45，出现一笔卖出看涨期权交易，成交量为14000张，"
+            "未平仓数为1000张，V/OI值为14，交易金额为7420000USD，"
+            "合约行权价是120，到期日为2027/06/17\n"
+            "7.9 22:27，出现一笔买入看涨期权交易，成交量为498张，"
+            "未平仓数为145张，V/OI值为3.4，交易金额为672300USD，"
+            "合约行权价是85，到期日为2027/03/19"
+        )
+
+        rows, stats = oum.parse_unusual_content_with_stats(content, "2026-07-09", "US.PDD")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["event_time"], "07-09 22:27")
+        self.assertEqual(stats["excluded_other_trade_date_records"], 1)
+
     def test_replace_rows_for_date_symbols_preserves_other_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "rows.csv"
