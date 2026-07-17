@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
-"""
-Collect Futu derivative unusual-option rows for dashboard matching.
-
-The current Futu skill backend returns option-unusual trades as text. This
-module normalizes the useful fields so the dashboard can match them against
-the mixed Top 10 option contracts.
-"""
+"""Collect structured option events from Futu for one US trading date."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-import re
-import sys
-import time
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
 from runtime_env import configure_runtime
@@ -35,21 +26,15 @@ UNUSUAL_COLUMNS = [
     "direction",
     "event_time",
     "raw_text",
+    "open_interest",
+    "contract_volume",
+    "vo_ratio",
+    "strategy_type",
 ]
 
-UNUSUAL_PATTERN = re.compile(
-    r"(?P<month>\d{1,2})\.(?P<day>\d{1,2})\s+"
-    r"(?P<time>\d{1,2}:\d{2}).*?"
-    r"出现一笔(?P<side>买入|卖出|中性)(?P<option_kind>看涨|看跌|认购|认沽)期权交易.*?"
-    r"成交量为(?P<volume>[\d,]+)张.*?"
-    r"交易金额为(?P<turnover>[\d,.]+)USD.*?"
-    r"合约行权价是(?P<strike>[\d.]+).*?"
-    r"到期日为(?P<expiry>\d{4}/\d{1,2}/\d{1,2})",
-    re.S,
-)
-
-BJT = ZoneInfo("Asia/Shanghai")
 ET = ZoneInfo("America/New_York")
+VALID_DIRECTIONS = {"BUY", "SELL", "NEUTRAL"}
+VALID_OPTION_TYPES = {"CALL", "PUT"}
 
 
 def safe_float(value: Any) -> float:
@@ -68,129 +53,92 @@ def safe_int(value: Any) -> int:
         return 0
 
 
-def normalize_expiry(value: str) -> str:
-    for fmt in ("%Y/%m/%d", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(value.strip(), fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return value.strip().replace("/", "-")
+def optional_number(value: Any, *, integer: bool = False) -> int | float | str:
+    if value in (None, "", "N/A"):
+        return ""
+    try:
+        number = float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return ""
+    return int(number) if integer else number
 
 
-def normalize_option_type(value: str) -> str:
-    text = str(value)
-    if text in {"看涨", "认购", "CALL", "C"}:
-        return "CALL"
-    if text in {"看跌", "认沽", "PUT", "P"}:
-        return "PUT"
-    return text.upper()
-
-
-def normalize_direction(value: str) -> str:
-    text = str(value)
-    if text in {"买入", "主动买入", "BUY"}:
-        return "BUY"
-    if text in {"卖出", "主动卖出", "SELL"}:
-        return "SELL"
-    if text in {"中性", "NEUTRAL"}:
-        return "NEUTRAL"
-    return ""
-
-
-def split_records(content: str) -> list[str]:
-    records: list[str] = []
-    for line in str(content or "").splitlines():
-        line = line.strip()
-        if not line or "出现一笔" not in line:
-            continue
-        records.append(line.rstrip("。"))
-    return records
-
-
-def event_belongs_to_us_trade_date(month: int, day: int, event_time: str, snapshot_date: str) -> bool:
+def event_time_bounds(snapshot_date: str) -> tuple[float, float]:
     target = datetime.strptime(snapshot_date, "%Y-%m-%d").date()
-    hour, minute = (int(part) for part in event_time.split(":"))
-    for year in (target.year - 1, target.year, target.year + 1):
-        try:
-            event_bjt = datetime(year, month, day, hour, minute, tzinfo=BJT)
-        except ValueError:
-            continue
-        if event_bjt.astimezone(ET).date() == target:
-            return True
-    return False
+    start = datetime.combine(target, time.min, tzinfo=ET)
+    end = start + timedelta(days=1)
+    return start.timestamp(), end.timestamp()
 
 
-def parse_unusual_content_with_stats(
-    content: str,
+def normalize_event_records(
+    records: Iterable[dict[str, Any]],
     snapshot_date: str,
-    underlying: str,
-    failed_example_limit: int = 3,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    watchlist: list[str],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    target = datetime.strptime(snapshot_date, "%Y-%m-%d").date()
+    requested = {str(symbol).upper() for symbol in watchlist}
+    seen: set[tuple[Any, ...]] = set()
     rows: list[dict[str, Any]] = []
-    records = split_records(content)
-    failed_examples: list[str] = []
-    excluded_neutral_examples: list[str] = []
-    unparsed_count = 0
-    excluded_neutral_count = 0
-    excluded_other_trade_date_count = 0
+    stats = {
+        "exact_duplicates_removed": 0,
+        "excluded_other_trade_date": 0,
+        "invalid_records": 0,
+        "neutral_records_kept": 0,
+    }
+
     for record in records:
-        match = UNUSUAL_PATTERN.search(record)
-        if not match:
-            unparsed_count += 1
-            if len(failed_examples) < failed_example_limit:
-                failed_examples.append(record)
-            continue
-        if not event_belongs_to_us_trade_date(
-            int(match.group("month")),
-            int(match.group("day")),
-            match.group("time"),
-            snapshot_date,
+        option_code = str(record.get("option_code") or "").upper()
+        underlying = str(record.get("owner_code") or "").upper()
+        direction = str(record.get("ticker_type") or "").upper()
+        option_type = str(record.get("option_type") or "").upper()
+        timestamp = safe_float(record.get("fill_timestamp"))
+        volume = safe_int(record.get("volume"))
+        turnover = safe_float(record.get("turnover"))
+        price = safe_float(record.get("price"))
+        if (
+            not option_code
+            or underlying not in requested
+            or direction not in VALID_DIRECTIONS
+            or option_type not in VALID_OPTION_TYPES
+            or timestamp <= 0
+            or volume <= 0
         ):
-            excluded_other_trade_date_count += 1
+            stats["invalid_records"] += 1
             continue
-        expiry = normalize_expiry(match.group("expiry"))
-        option_type = normalize_option_type(match.group("option_kind"))
-        direction = normalize_direction(match.group("side"))
+
+        event_et = datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone(ET)
+        if event_et.date() != target:
+            stats["excluded_other_trade_date"] += 1
+            continue
+
+        key = (option_code, timestamp, direction, price, volume, turnover)
+        if key in seen:
+            stats["exact_duplicates_removed"] += 1
+            continue
+        seen.add(key)
         if direction == "NEUTRAL":
-            excluded_neutral_count += 1
-            if len(excluded_neutral_examples) < failed_example_limit:
-                excluded_neutral_examples.append(record)
-            continue
-        if option_type not in {"CALL", "PUT"} or direction not in {"BUY", "SELL"}:
-            unparsed_count += 1
-            if len(failed_examples) < failed_example_limit:
-                failed_examples.append(record)
-            continue
+            stats["neutral_records_kept"] += 1
         rows.append(
             {
                 "snapshot_date": snapshot_date,
                 "underlying": underlying,
-                "option_code": "",
+                "option_code": option_code,
                 "option_type": option_type,
-                "strike": safe_float(match.group("strike")),
-                "expiry": expiry,
-                "volume": safe_int(match.group("volume")),
-                "turnover": safe_float(match.group("turnover")),
+                "strike": safe_float(record.get("strike_price")),
+                "expiry": str(record.get("strike_time") or ""),
+                "volume": volume,
+                "turnover": turnover,
                 "direction": direction,
-                "event_time": f"{int(match.group('month')):02d}-{int(match.group('day')):02d} {match.group('time')}",
-                "raw_text": record,
+                "event_time": event_et.strftime("%Y-%m-%d %H:%M:%S"),
+                "raw_text": "",
+                "open_interest": optional_number(record.get("total_open_interest"), integer=True),
+                "contract_volume": optional_number(record.get("total_volume"), integer=True),
+                "vo_ratio": optional_number(record.get("vo_ratio")),
+                "strategy_type": str(record.get("strategy_type") or "").upper(),
             }
         )
-    stats = {
-        "raw_records": len(records),
-        "parsed_records": len(rows),
-        "excluded_neutral_records": excluded_neutral_count,
-        "excluded_other_trade_date_records": excluded_other_trade_date_count,
-        "unparsed_records": unparsed_count,
-        "excluded_neutral_examples": excluded_neutral_examples,
-        "failed_examples": failed_examples,
-    }
+    rows.sort(key=lambda row: (row["underlying"], row["event_time"], row["option_code"], row["direction"]))
     return rows, stats
-
-
-def parse_unusual_content(content: str, snapshot_date: str, underlying: str) -> list[dict[str, Any]]:
-    rows, _stats = parse_unusual_content_with_stats(content, snapshot_date, underlying)
-    return rows
 
 
 def create_quote_context():
@@ -200,91 +148,86 @@ def create_quote_context():
     return OpenQuoteContext(host="127.0.0.1", port=11111)
 
 
+def collect_event_pages(ctx: Any, watchlist: list[str], snapshot_date: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    configure_runtime()
+    from futu import EventIndicatorType, OptionEventFilter, OptionMarket, RET_OK
+
+    start_ts, end_ts = event_time_bounds(snapshot_date)
+    filters = [
+        OptionEventFilter(EventIndicatorType.OWNER_LIST, security_list=watchlist),
+        OptionEventFilter(
+            EventIndicatorType.TIME,
+            interval_min=start_ts,
+            interval_max=end_ts,
+            min_inclusive=True,
+            max_inclusive=False,
+        ),
+    ]
+    page: str | None = None
+    seen_pages: set[str] = set()
+    records: list[dict[str, Any]] = []
+    expected_count: int | None = None
+    pages = 0
+    while True:
+        ret, payload = ctx.get_option_event(
+            OptionMarket.US_SECURITY,
+            count=300,
+            page=page,
+            filter_list=filters,
+        )
+        if ret != RET_OK:
+            raise RuntimeError(f"get_option_event failed on page {pages + 1}: {payload}")
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"get_option_event returned {type(payload).__name__}, expected dict")
+        page_count = safe_int(payload.get("all_count"))
+        if expected_count is None:
+            expected_count = page_count
+        elif page_count != expected_count:
+            raise RuntimeError(f"get_option_event all_count changed during pagination: {expected_count} -> {page_count}")
+        frame = payload.get("event_list")
+        if frame is None:
+            raise RuntimeError("get_option_event payload is missing event_list")
+        records.extend(frame.to_dict("records"))
+        pages += 1
+        next_page = str(payload.get("next_page") or "")
+        if not next_page:
+            break
+        if next_page in seen_pages:
+            raise RuntimeError(f"get_option_event repeated pagination cursor: {next_page}")
+        seen_pages.add(next_page)
+        page = next_page
+
+    expected_count = expected_count or 0
+    if len(records) != expected_count:
+        raise RuntimeError(f"get_option_event pagination incomplete: received {len(records)} of {expected_count}")
+    return records, {"pages": pages, "all_count": expected_count, "rows_received": len(records)}
+
+
 def collect_unusual_rows_with_stats(
     watchlist: list[str],
     snapshot_date: str,
-    request_pause: float,
-    time_range: int = 1,
-    language_id: int = 0,
-) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
-    configure_runtime()
-    from futu import RET_OK
-
-    rows: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    stats: dict[str, Any] = {
-        "symbols_requested": len(watchlist),
-        "symbols_failed": 0,
-        "raw_records": 0,
-        "parsed_records": 0,
-        "excluded_neutral_records": 0,
-        "excluded_other_trade_date_records": 0,
-        "unparsed_records": 0,
-        "excluded_neutral_examples": [],
-        "failed_examples": [],
-    }
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    normalized_watchlist = sorted({str(symbol).upper() for symbol in watchlist})
+    if not normalized_watchlist:
+        raise RuntimeError("get_option_event requires at least one symbol")
     ctx = create_quote_context()
     try:
-        for index, underlying in enumerate(watchlist):
-            if index:
-                time.sleep(request_pause)
-            try:
-                ret, data = ctx.get_derivative_unusual(
-                    underlying,
-                    time_range=time_range,
-                    analysis_dimensions=["option_unusual"],
-                    language_id=language_id,
-                )
-            except Exception as exc:
-                warnings.append(f"{underlying}: get_derivative_unusual raised {type(exc).__name__}: {exc}")
-                stats["symbols_failed"] += 1
-                continue
-            if ret != RET_OK:
-                warnings.append(f"{underlying}: get_derivative_unusual failed: {data}")
-                stats["symbols_failed"] += 1
-                continue
-            if not isinstance(data, dict):
-                warnings.append(f"{underlying}: unexpected derivative unusual payload type: {type(data).__name__}")
-                stats["symbols_failed"] += 1
-                continue
-            content = str(data.get("content") or "")
-            parsed_rows, parse_stats = parse_unusual_content_with_stats(content, snapshot_date, underlying)
-            rows.extend(parsed_rows)
-            stats["raw_records"] += int(parse_stats["raw_records"])
-            stats["parsed_records"] += int(parse_stats["parsed_records"])
-            stats["excluded_neutral_records"] += int(parse_stats["excluded_neutral_records"])
-            stats["excluded_other_trade_date_records"] += int(parse_stats["excluded_other_trade_date_records"])
-            stats["unparsed_records"] += int(parse_stats["unparsed_records"])
-            for example in parse_stats["excluded_neutral_examples"]:
-                if len(stats["excluded_neutral_examples"]) < 10:
-                    stats["excluded_neutral_examples"].append({"underlying": underlying, "raw_text": example})
-            for example in parse_stats["failed_examples"]:
-                if len(stats["failed_examples"]) < 10:
-                    stats["failed_examples"].append({"underlying": underlying, "raw_text": example})
-            if parse_stats["unparsed_records"]:
-                warnings.append(
-                    f"{underlying}: {parse_stats['unparsed_records']} option unusual records could not be parsed"
-                )
+        records, page_stats = collect_event_pages(ctx, normalized_watchlist, snapshot_date)
     finally:
         ctx.close()
-    return rows, warnings, stats
+    rows, normalize_stats = normalize_event_records(records, snapshot_date, normalized_watchlist)
+    stats: dict[str, Any] = {
+        "symbols_requested": len(normalized_watchlist),
+        **page_stats,
+        **normalize_stats,
+        "rows_stored": len(rows),
+    }
+    return rows, stats
 
 
-def collect_unusual_rows(
-    watchlist: list[str],
-    snapshot_date: str,
-    request_pause: float,
-    time_range: int = 1,
-    language_id: int = 0,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    rows, warnings, _stats = collect_unusual_rows_with_stats(
-        watchlist=watchlist,
-        snapshot_date=snapshot_date,
-        request_pause=request_pause,
-        time_range=time_range,
-        language_id=language_id,
-    )
-    return rows, warnings
+def collect_unusual_rows(watchlist: list[str], snapshot_date: str) -> list[dict[str, Any]]:
+    rows, _stats = collect_unusual_rows_with_stats(watchlist, snapshot_date)
+    return rows
 
 
 def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -297,11 +240,9 @@ def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect option unusual rows from Futu derivative anomaly API.")
+    parser = argparse.ArgumentParser(description="Collect structured option events from Futu.")
     parser.add_argument("--symbols", nargs="+", required=True)
     parser.add_argument("--snapshot-date", required=True)
-    parser.add_argument("--request-pause", type=float, default=3.8)
-    parser.add_argument("--time-range", type=int, default=1)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     return parser
@@ -309,28 +250,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    rows, warnings, stats = collect_unusual_rows_with_stats(
+    rows, stats = collect_unusual_rows_with_stats(
         watchlist=[str(symbol).upper() for symbol in args.symbols],
         snapshot_date=args.snapshot_date,
-        request_pause=args.request_pause,
-        time_range=args.time_range,
     )
     if args.output:
         write_rows(args.output, rows)
     if args.json:
-        print(json.dumps({"rows": rows, "warnings": warnings, "stats": stats}, ensure_ascii=False, indent=2))
+        print(json.dumps({"rows": rows, "stats": stats}, ensure_ascii=False, indent=2))
     else:
-        print(f"Collected option unusual rows: {len(rows)}")
-        print(
-            "Parse stats: "
-            f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
-            f"{stats['excluded_neutral_records']} neutral excluded, "
-            f"{stats['excluded_other_trade_date_records']} other trade date excluded, "
-            f"{stats['unparsed_records']} unparsed, "
-            f"{stats['symbols_failed']} symbols failed"
-        )
-        for warning in warnings:
-            print(f"[warn] {warning}", file=sys.stderr)
+        print(f"Collected structured option events: {len(rows)}")
+        print(json.dumps(stats, ensure_ascii=False))
     return 0
 
 

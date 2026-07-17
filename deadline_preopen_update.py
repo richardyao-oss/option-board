@@ -138,26 +138,6 @@ def collect_volume_for_symbol(symbol: str, stock_id: int, snapshot_date: str, pa
     return rows, total_seen
 
 
-def collect_unusual_for_symbol(symbol: str, snapshot_date: str) -> list[dict[str, Any]]:
-    rows, warnings, stats = oum.collect_unusual_rows_with_stats(
-        watchlist=[symbol],
-        snapshot_date=snapshot_date,
-        request_pause=0,
-        time_range=dor.COMPLETE_UNUSUAL_TIME_RANGE,
-        language_id=0,
-    )
-    for warning in warnings:
-        print(f"[warn] option unusual: {warning}", file=sys.stderr)
-    print(
-        f"Option unusual {symbol}: "
-        f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
-        f"{stats['excluded_neutral_records']} neutral excluded, "
-        f"{stats['excluded_other_trade_date_records']} other trade date excluded, "
-        f"{stats['unparsed_records']} unparsed"
-    )
-    return rows
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Deadline-aware preopen option dashboard update.")
     parser.add_argument("--deadline-bjt", required=True, help="BJT deadline, e.g. 21:29:59 or YYYY-MM-DD HH:MM:SS")
@@ -184,8 +164,8 @@ def main() -> int:
     dor.ensure_preopen_collection_window(args.allow_market_hours_preopen)
     watchlist, report_groups = dor.choose_watchlist(args)
     snapshot_date = args.snapshot_date or dor.last_completed_us_trade_date().isoformat()
-    scope = dor.collection_scope(args, watchlist, dor.COMPLETE_UNUSUAL_TIME_RANGE)
-    metadata = dor.collection_metadata(snapshot_date, "complete", scope)
+    dor.ensure_overview_target_date("preopen", snapshot_date)
+    scope = dor.collection_scope(args, watchlist)
     progress_path = args.data_dir / PROGRESS_FILE
     progress: dict[str, Any] = {
         "started_at_bjt": bjt_now().strftime("%Y-%m-%d %H:%M:%S BJT"),
@@ -254,12 +234,6 @@ def main() -> int:
             volume_total_seen += volume_seen
         else:
             stopped_reason = f"deadline reached after turnover for {symbol}"
-        if has_time(deadline, args.deadline_guard_seconds):
-            time.sleep(args.request_pause)
-            unusual_rows.extend(collect_unusual_for_symbol(symbol, snapshot_date))
-        elif not stopped_reason:
-            stopped_reason = f"deadline reached after volume for {symbol}"
-
         if stopped_reason:
             progress["partial_symbol"] = symbol
             progress["remaining_symbols"] = watchlist[index:]
@@ -292,7 +266,23 @@ def main() -> int:
         )
         return 2
 
-    aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
+    if not has_time(deadline, args.deadline_guard_seconds):
+        progress["status"] = "stopped_before_deadline"
+        progress["stop_reason"] = "deadline reached before global option event fetch"
+        write_progress(progress_path, progress)
+        return 2
+    unusual_rows, event_stats = dor.collect_option_unusual_rows(watchlist, snapshot_date)
+    if not has_time(deadline, args.deadline_guard_seconds):
+        progress["status"] = "stopped_before_deadline"
+        progress["stop_reason"] = "deadline reached before underlying overview fetch"
+        write_progress(progress_path, progress)
+        return 2
+    aggregates = osm.collect_overview_aggregates(watchlist, snapshot_date, contracts)
+    dor.add_collection_stats(scope, event_stats, len(aggregates))
+    metadata = dor.collection_metadata(snapshot_date, "complete", scope)
+    progress["unusual_rows"] = len(unusual_rows)
+    progress["option_event_pages"] = event_stats["pages"]
+    progress["option_overview_symbol_count"] = len(aggregates)
     daily_contract_path = args.data_dir / "option_screen_contract_snapshot.csv"
     daily_volume_contract_path = args.data_dir / dor.VOLUME_CONTRACT_SNAPSHOT_FILE
     unusual_path = args.data_dir / dor.UNUSUAL_SNAPSHOT_FILE

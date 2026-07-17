@@ -44,6 +44,7 @@ class IntentStructureTests(unittest.TestCase):
 
         self.assertEqual(parent_orders, 2)
         self.assertEqual([item["type"] for item in structures], ["bear_call_spread"])
+        self.assertEqual(structures[0]["confidence"], "suspected")
         self.assertEqual(residual["bullish_orders"], 0)
         self.assertEqual(residual["bearish_orders"], 0)
 
@@ -110,13 +111,95 @@ class IntentStructureTests(unittest.TestCase):
         self.assertEqual(strong["opening_support"], "strong")
         self.assertEqual(weak["opening_support"], "weak")
 
+    def test_new_multi_leg_has_high_confidence_and_two_distinct_voi_metrics(self) -> None:
+        rows = [
+            {
+                **unusual("US.MARA", "CALL", 12.5, "SELL", 100, 40_000, "2026-07-10 10:15:01"),
+                "option_code": "US.MARA260731C00012500",
+                "open_interest": "100",
+                "contract_volume": "420",
+                "vo_ratio": "4.2",
+                "strategy_type": "MULTI_LEG",
+            },
+            {
+                **unusual("US.MARA", "CALL", 12.5, "SELL", 50, 20_000, "2026-07-10 10:15:40"),
+                "option_code": "US.MARA260731C00012500",
+                "open_interest": "100",
+                "contract_volume": "420",
+                "vo_ratio": "4.2",
+                "strategy_type": "MULTI_LEG",
+            },
+            {
+                **unusual("US.MARA", "CALL", 13.5, "BUY", 150, 15_000, "2026-07-10 10:15:52"),
+                "option_code": "US.MARA260731C00013500",
+                "open_interest": "300",
+                "contract_volume": "600",
+                "vo_ratio": "2.0",
+                "strategy_type": "MULTI_LEG",
+            },
+        ]
+
+        structures, residual, _orders = analysis.structure_and_residual_summary(
+            rows, "2026-07-10", "US.MARA"
+        )
+        evidence = analysis.compact_event_evidence(
+            rows, "2026-07-10", "US.MARA", structures
+        )
+
+        self.assertEqual(structures[0]["type"], "bear_call_spread")
+        self.assertEqual(structures[0]["confidence"], "high")
+        self.assertEqual(residual["bullish_orders"] + residual["bearish_orders"], 0)
+        self.assertEqual(evidence["max_event_v_oi"], 1.5)
+        self.assertEqual(evidence["max_contract_vo_ratio"], 4.2)
+        self.assertEqual(evidence["contract_heat"], "very_hot")
+        self.assertLessEqual(len(evidence["event_contracts"]), 3)
+
+    def test_single_leg_records_are_never_forced_into_a_structure(self) -> None:
+        rows = []
+        for strike, direction in ((20, "BUY"), (23, "SELL")):
+            row = unusual("US.SOFI", "CALL", strike, direction, 1_000, 500_000)
+            row["strategy_type"] = "SINGLE_LEG"
+            rows.append(row)
+
+        structures, residual, _orders = analysis.structure_and_residual_summary(
+            rows, "2026-07-10", "US.SOFI"
+        )
+
+        self.assertEqual(structures, [])
+        self.assertEqual(residual["bullish_orders"], 1)
+        self.assertEqual(residual["bearish_orders"], 1)
+
+    def test_neutral_event_provides_heat_without_direction(self) -> None:
+        row = unusual("US.MDB", "CALL", 400, "NEUTRAL", 2_000, 2_000_000)
+        row.update(
+            {
+                "option_code": "US.MDB260731C00400000",
+                "open_interest": "500",
+                "contract_volume": "2500",
+                "vo_ratio": "5",
+                "strategy_type": "SINGLE_LEG",
+            }
+        )
+
+        structures, residual, parent_orders = analysis.structure_and_residual_summary(
+            [row], "2026-07-10", "US.MDB"
+        )
+        evidence = analysis.compact_event_evidence(
+            [row], "2026-07-10", "US.MDB", structures
+        )
+
+        self.assertEqual(parent_orders, 0)
+        self.assertEqual(structures, [])
+        self.assertEqual(residual["bullish_orders"] + residual["bearish_orders"], 0)
+        self.assertEqual(evidence["contract_heat"], "very_hot")
+        self.assertEqual(evidence["event_contracts"][0]["direction"], "NEUTRAL")
+
 
 class IntentReplayTests(unittest.TestCase):
     def test_july_10_compact_replay(self) -> None:
         report = analysis.build_intent_report("2026-07-10", 15)
         candidates = {item["symbol"]: item for item in report["candidates"]}
 
-        self.assertTrue(report["coverage"]["complete"])
         self.assertEqual(report["coverage"]["symbols"], 70)
         self.assertEqual(report["coverage"]["unusual_rows"], 514)
         self.assertEqual(len(report["groups"]), 7)

@@ -166,6 +166,11 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
+def csv_headers(path: Path) -> set[str]:
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return set(csv.DictReader(f).fieldnames or [])
+
+
 def validate_outputs(
     expected_mode: str,
     expected_symbols: list[str],
@@ -174,12 +179,19 @@ def validate_outputs(
     status_path = ROOT / "data" / "option_screen_snapshot_status.json"
     report_path = ROOT / "reports" / "options_anomaly_report.html"
     unusual_path = ROOT / "data" / "option_unusual_snapshot.csv"
+    aggregate_path = ROOT / "data" / "option_screen_underlying_snapshot.csv"
     if not status_path.exists():
         raise RuntimeError("Missing option_screen_snapshot_status.json after update.")
     if not report_path.exists():
         raise RuntimeError("Missing options_anomaly_report.html after update.")
     if not unusual_path.exists():
         raise RuntimeError("Missing option_unusual_snapshot.csv after update.")
+    required_unusual = {"open_interest", "contract_volume", "vo_ratio", "strategy_type"}
+    missing_unusual_headers = required_unusual - csv_headers(unusual_path)
+    if missing_unusual_headers:
+        raise RuntimeError(f"Missing unusual CSV fields: {sorted(missing_unusual_headers)}")
+    if "volume_basis" not in csv_headers(aggregate_path):
+        raise RuntimeError("Missing aggregate CSV field: volume_basis")
 
     status = json.loads(status_path.read_text(encoding="utf-8-sig"))
     snapshot_date = str(status.get("snapshot_date") or status.get("trade_date") or "")
@@ -189,6 +201,17 @@ def validate_outputs(
         raise RuntimeError(f"Expected snapshot_type={expected_type}, got {snapshot_type}.")
     if not snapshot_date:
         raise RuntimeError("Snapshot date is empty after update.")
+    scope = status.get("collection_scope") or {}
+    if scope.get("option_unusual_source") != "get_option_event":
+        raise RuntimeError("Snapshot status does not record get_option_event as the unusual source.")
+    if scope.get("option_volume_source") != "get_option_underlying_overview":
+        raise RuntimeError("Snapshot status does not record get_option_underlying_overview as the volume source.")
+    if int(scope.get("option_event_rows_received", -1)) != int(scope.get("option_event_all_count", -2)):
+        raise RuntimeError("Option event pagination is incomplete in snapshot status.")
+    if int(scope.get("option_event_pages", 0)) < 1:
+        raise RuntimeError("Option event pagination page count is missing.")
+    if int(scope.get("option_overview_symbol_count", -1)) != len(expected_symbols):
+        raise RuntimeError("Option overview coverage count does not match the requested scan scope.")
 
     agg_rows = [row for row in read_csv(ROOT / "data" / "option_screen_underlying_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
     contract_rows = [row for row in read_csv(ROOT / "data" / "option_screen_contract_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
@@ -209,6 +232,13 @@ def validate_outputs(
         raise RuntimeError(
             f"Unexpected aggregate symbols for {snapshot_date}: {', '.join(extra_symbols)}"
         )
+    if any(str(row.get("volume_basis", "")) != "underlying_overview" for row in agg_rows if row.get("underlying") in expected_symbol_set):
+        raise RuntimeError("Current aggregate rows do not use underlying_overview volume basis.")
+    if any(str(row.get("snapshot_date", "")) != snapshot_date for row in unusual_rows):
+        raise RuntimeError("Option event CSV contains rows outside the target trade date.")
+    allowed_symbols = set(rg.configured_theme_symbols())
+    if any(str(row.get("underlying", "")).upper() not in allowed_symbols for row in unusual_rows):
+        raise RuntimeError("Option event CSV contains an underlying outside the dashboard configuration.")
 
     html_text = report_path.read_text(encoding="utf-8", errors="ignore")
     if snapshot_date not in html_text:

@@ -48,6 +48,15 @@ def safe_int(value: Any) -> int:
         return 0
 
 
+def optional_float(value: Any) -> float | None:
+    if value in (None, "", "N/A"):
+        return None
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def latest_snapshot_date(agg_rows: list[dict[str, str]]) -> str:
     status_path = DATA_DIR / "option_screen_snapshot_status.json"
     if status_path.exists():
@@ -62,8 +71,19 @@ def latest_snapshot_date(agg_rows: list[dict[str, str]]) -> str:
     return dates[-1] if dates else ""
 
 
-def prior_row(rows: list[dict[str, str]], snapshot_date: str) -> dict[str, str] | None:
-    prior = [row for row in rows if str(row.get("snapshot_date", "")) < snapshot_date]
+def volume_basis(row: dict[str, Any]) -> str:
+    return str(row.get("volume_basis") or "option_screen_turnover")
+
+
+def prior_row(
+    rows: list[dict[str, str]], snapshot_date: str, basis: str | None = None
+) -> dict[str, str] | None:
+    prior = [
+        row
+        for row in rows
+        if str(row.get("snapshot_date", "")) < snapshot_date
+        and (basis is None or volume_basis(row) == basis)
+    ]
     return sorted(prior, key=lambda row: str(row.get("snapshot_date", "")))[-1] if prior else None
 
 
@@ -126,7 +146,7 @@ def event_minute(value: Any) -> str:
 
 
 def merge_parent_orders(
-    rows: list[dict[str, str]], snapshot_date: str, symbol: str
+    rows: list[dict[str, str]], snapshot_date: str, symbol: str, include_neutral: bool = False
 ) -> list[dict[str, Any]]:
     exact: dict[tuple[str, ...], dict[str, str]] = {}
     for row in rows:
@@ -134,9 +154,11 @@ def merge_parent_orders(
             continue
         direction = str(row.get("direction", "")).upper()
         option_type = str(row.get("option_type", "")).upper()
-        if direction not in {"BUY", "SELL"} or option_type not in {"CALL", "PUT"}:
+        allowed_directions = {"BUY", "SELL", "NEUTRAL"} if include_neutral else {"BUY", "SELL"}
+        if direction not in allowed_directions or option_type not in {"CALL", "PUT"}:
             continue
         key = (
+            str(row.get("option_code", "")).strip(),
             str(row.get("event_time", "")).strip(),
             str(row.get("expiry", "")),
             option_type,
@@ -151,6 +173,7 @@ def merge_parent_orders(
     for row in exact.values():
         key = (
             event_minute(row.get("event_time")),
+            str(row.get("option_code", "")).strip(),
             str(row.get("expiry", "")),
             str(row.get("option_type", "")).upper(),
             f"{safe_float(row.get('strike')):.4f}",
@@ -160,19 +183,40 @@ def merge_parent_orders(
             key,
             {
                 "event_time": key[0],
-                "expiry": key[1],
-                "option_type": key[2],
+                "option_code": key[1],
+                "expiry": key[2],
+                "option_type": key[3],
                 "strike": safe_float(row.get("strike")),
-                "direction": key[4],
+                "direction": key[5],
                 "volume": 0,
                 "turnover": 0.0,
+                "open_interest": None,
+                "contract_volume": None,
+                "contract_vo_ratio": None,
+                "strategy_types": set(),
             },
         )
         leg["volume"] += safe_int(row.get("volume"))
         leg["turnover"] += safe_float(row.get("turnover"))
+        open_interest = optional_float(row.get("open_interest"))
+        contract_volume = optional_float(row.get("contract_volume"))
+        contract_vo_ratio = optional_float(row.get("vo_ratio"))
+        if open_interest is not None:
+            leg["open_interest"] = max(leg["open_interest"] or 0, open_interest)
+        if contract_volume is not None:
+            leg["contract_volume"] = max(leg["contract_volume"] or 0, contract_volume)
+        if contract_vo_ratio is not None:
+            leg["contract_vo_ratio"] = max(leg["contract_vo_ratio"] or 0, contract_vo_ratio)
+        strategy_type = str(row.get("strategy_type") or "").upper()
+        if strategy_type:
+            leg["strategy_types"].add(strategy_type)
 
     legs = list(merged.values())
     for index, leg in enumerate(legs):
+        strategy_types = sorted(leg.pop("strategy_types"))
+        leg["strategy_type"] = strategy_types[0] if len(strategy_types) == 1 else "MIXED" if strategy_types else ""
+        open_interest = optional_float(leg.get("open_interest"))
+        leg["event_v_oi"] = leg["volume"] / open_interest if open_interest and open_interest > 0 else None
         leg["_id"] = index
     return legs
 
@@ -229,25 +273,32 @@ def structure_and_residual_summary(
     used: set[int] = set()
     structures: list[dict[str, Any]] = []
     for (_event_time, volume), candidates in by_time_volume.items():
-        identities = {
-            (leg["expiry"], leg["option_type"], leg["strike"], leg["direction"])
-            for leg in candidates
-        }
-        if len(identities) < 2:
-            continue
-        structure_type, bias = classify_structure(candidates)
-        used.update(int(leg["_id"]) for leg in candidates)
-        structures.append(
-            {
-                "type": structure_type,
-                "confidence": "suspected" if structure_type == "suspected_structure" else "high",
-                "bias": bias,
-                "event_time": candidates[0]["event_time"],
-                "volume": volume,
-                "turnover_m": round(sum(safe_float(leg["turnover"]) for leg in candidates) / 1_000_000, 3),
-                "legs": [leg_label(leg) for leg in candidates[:6]],
+        candidate_sets = [
+            ("new_multi_leg", [leg for leg in candidates if leg.get("strategy_type") == "MULTI_LEG"]),
+            ("legacy_heuristic", [leg for leg in candidates if not leg.get("strategy_type")]),
+        ]
+        for source, eligible in candidate_sets:
+            identities = {
+                (leg["expiry"], leg["option_type"], leg["strike"], leg["direction"])
+                for leg in eligible
             }
-        )
+            if len(identities) < 2:
+                continue
+            structure_type, bias = classify_structure(eligible)
+            used.update(int(leg["_id"]) for leg in eligible)
+            high_confidence = source == "new_multi_leg" and structure_type != "suspected_structure"
+            structures.append(
+                {
+                    "type": structure_type,
+                    "confidence": "high" if high_confidence else "suspected",
+                    "source": source,
+                    "bias": bias,
+                    "event_time": eligible[0]["event_time"],
+                    "volume": volume,
+                    "turnover_m": round(sum(safe_float(leg["turnover"]) for leg in eligible) / 1_000_000, 3),
+                    "legs": [leg_label(leg) for leg in eligible[:6]],
+                }
+            )
     structures.sort(key=lambda item: item["turnover_m"], reverse=True)
 
     bullish = bearish = 0.0
@@ -286,6 +337,93 @@ def select_structures(structures: list[dict[str, Any]], limit: int = 5) -> list[
         if item not in selected:
             selected.append(item)
     return sorted(selected[:limit], key=lambda item: item["turnover_m"], reverse=True)
+
+
+def contract_heat(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    if value < 1:
+        return "normal"
+    if value < 2:
+        return "hot"
+    return "very_hot"
+
+
+def compact_event_evidence(
+    rows: list[dict[str, str]],
+    snapshot_date: str,
+    symbol: str,
+    structures: list[dict[str, Any]],
+    limit: int = 3,
+) -> dict[str, Any]:
+    legs = merge_parent_orders(rows, snapshot_date, symbol, include_neutral=True)
+    ratio_by_contract: dict[tuple[Any, ...], float] = {}
+    for leg in legs:
+        identity = (
+            leg.get("option_code") or "",
+            leg.get("expiry"),
+            leg.get("option_type"),
+            safe_float(leg.get("strike")),
+        )
+        ratio = optional_float(leg.get("contract_vo_ratio"))
+        if ratio is not None:
+            ratio_by_contract[identity] = max(ratio_by_contract.get(identity, ratio), ratio)
+    for leg in legs:
+        identity = (
+            leg.get("option_code") or "",
+            leg.get("expiry"),
+            leg.get("option_type"),
+            safe_float(leg.get("strike")),
+        )
+        if identity in ratio_by_contract:
+            leg["contract_vo_ratio"] = ratio_by_contract[identity]
+    main_leg_labels = set(structures[0].get("legs", [])) if structures else set()
+    legs.sort(
+        key=lambda leg: (
+            leg_label(leg) in main_leg_labels,
+            safe_float(leg.get("turnover")),
+        ),
+        reverse=True,
+    )
+    max_event_v_oi = max(
+        (safe_float(leg["event_v_oi"]) for leg in legs if leg.get("event_v_oi") is not None),
+        default=None,
+    )
+    max_contract_vo_ratio = max(
+        (
+            safe_float(leg["contract_vo_ratio"])
+            for leg in legs
+            if leg.get("contract_vo_ratio") is not None
+        ),
+        default=None,
+    )
+    event_contracts = []
+    for leg in legs[:limit]:
+        open_interest = optional_float(leg.get("open_interest"))
+        event_v_oi = optional_float(leg.get("event_v_oi"))
+        contract_vo_ratio = optional_float(leg.get("contract_vo_ratio"))
+        event_contracts.append(
+            {
+                "code": leg.get("option_code") or None,
+                "direction": leg.get("direction"),
+                "type": leg.get("option_type"),
+                "strike": safe_float(leg.get("strike")),
+                "expiry": leg.get("expiry"),
+                "volume": safe_int(leg.get("volume")),
+                "turnover_m": round(safe_float(leg.get("turnover")) / 1_000_000, 3),
+                "open_interest": int(open_interest) if open_interest is not None else None,
+                "event_v_oi": round(event_v_oi, 2) if event_v_oi is not None else None,
+                "contract_vo_ratio": round(contract_vo_ratio, 2) if contract_vo_ratio is not None else None,
+                "strategy_type": leg.get("strategy_type") or None,
+            }
+        )
+    return {
+        "max_event_v_oi": round(max_event_v_oi, 2) if max_event_v_oi is not None else None,
+        "max_contract_vo_ratio": round(max_contract_vo_ratio, 2) if max_contract_vo_ratio is not None else None,
+        "contract_heat": contract_heat(max_contract_vo_ratio),
+        "event_contracts": event_contracts,
+        "merged_events": len(legs),
+    }
 
 
 def prior_contract_map(rows: list[dict[str, str]], snapshot_date: str) -> dict[str, dict[str, str]]:
@@ -377,7 +515,11 @@ def compact_group_metrics(
     groups: list[dict[str, Any]] = []
     for group_name, symbols in rg.THEME_REPORT_GROUPS.items():
         rows = [current[symbol] for symbol in symbols if symbol in current]
-        prior_rows = [prior_row(by_symbol[symbol], snapshot_date) for symbol in symbols]
+        prior_rows = [
+            prior_row(by_symbol[symbol], snapshot_date, volume_basis(current[symbol]))
+            for symbol in symbols
+            if symbol in current
+        ]
         prior_rows = [row for row in prior_rows if row]
         call_volume = sum(safe_int(row.get("call_volume")) for row in rows)
         put_volume = sum(safe_int(row.get("put_volume")) for row in rows)
@@ -416,7 +558,7 @@ def build_analysis(snapshot_date: str | None = None) -> list[dict[str, Any]]:
             continue
         symbol = str(row.get("underlying", ""))
         signal = signals_by_key.get((date, symbol), {})
-        previous = prior_row(agg_by_symbol[symbol], date)
+        previous = prior_row(agg_by_symbol[symbol], date, volume_basis(row))
         direction = str(signal.get("direction") or "").upper()
         call_share = safe_float(row.get("call_share"))
         put_share = safe_float(row.get("put_share"))
@@ -511,6 +653,9 @@ def build_intent_report(snapshot_date: str | None = None, limit: int = 15) -> di
         structures, residual, parent_orders = structure_and_residual_summary(
             unusual_rows, date_value, symbol
         )
+        event_evidence = compact_event_evidence(
+            unusual_rows, date_value, symbol, structures, limit=3
+        )
         quote = quotes.get(symbol, {}) if isinstance(quotes, dict) else {}
         stock_price = safe_float(quote.get("stock_price"))
         price_change = safe_float(quote.get("change_ratio"))
@@ -595,7 +740,11 @@ def build_intent_report(snapshot_date: str | None = None, limit: int = 15) -> di
             "bearish" in directional_biases or residual["bias"] == "bearish"
         ):
             contradictions.append("price_up_vs_bearish_evidence")
-        if not symbol_unusual:
+        has_explicit_direction = any(
+            str(row.get("direction", "")).upper() in {"BUY", "SELL"}
+            for row in symbol_unusual
+        )
+        if not has_explicit_direction:
             contradictions.append("no_explicit_unusual_direction")
 
         candidates.append(
@@ -619,6 +768,7 @@ def build_intent_report(snapshot_date: str | None = None, limit: int = 15) -> di
                     "turnover_m": round(unusual_turnover_m, 2),
                     "structures": select_structures(structures),
                     "residual": residual,
+                    **event_evidence,
                 },
                 "contracts": contracts,
                 "evidence": evidence,

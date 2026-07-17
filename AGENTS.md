@@ -35,8 +35,9 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - Git worktree must be clean before running synced updates. Do not auto-merge option data conflicts.
 - VIX is special: Futu code is `US..VIX`, option screen category is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
 - Top contracts should preserve the current mixed logic: turnover top 5 plus volume top 10 after removing duplicates until 10 rows.
-- P/C remains volume-based. Top-contract tables should show both volume and turnover.
-- `option_screen_snapshot_status.json` should keep non-destructive collection metadata: screen sort/page counts, P/C basis, Top10 basis, and unusual time range.
+- P/C remains volume-based and must come from `get_option_underlying_overview`; `get_option_screen` is only for the mixed Top 10 contract tables, which should show both volume and turnover.
+- Collect unusual trades with paginated `get_option_event`, filtered by the requested symbols and target US trading date. Do not fall back to the legacy natural-language unusual API; abort before writing when event pagination or overview coverage is incomplete.
+- `option_screen_snapshot_status.json` should keep non-destructive collection metadata: screen sort/page counts, P/C basis, Top10 basis, event pagination/de-dup counts, overview coverage, and volume basis.
 
 ## Complete Review Intent Analysis
 
@@ -46,12 +47,13 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
   1. Keep only unusual trades whose BJT event time converts to the target US trading date.
   2. Merge likely split executions so one parent order does not count as repeated confirmation.
   3. Detect multi-leg structures before judging individual legs, including verticals, calendars/diagonals, straddles/strangles, risk reversals, butterflies/condors, and rolls when evidence supports them.
-  4. Infer opening, closing, or rolling with V/OI and, when later data exists, next-day OI change. V/OI alone is supporting evidence, not proof.
+  4. Infer opening, closing, or rolling with both merged event volume/OI (`event_v_oi`) and whole-contract daily volume/OI (`contract_vo_ratio`), plus next-day OI change when later data exists. Neither ratio alone proves opening.
   5. Treat BUY CALL / SELL PUT as usually bullish and BUY PUT / SELL CALL as usually bearish or upside-capping, but lower confidence when covered positions, hedges, or unseen spread legs could explain the trade.
   6. Include moneyness and time to expiry to distinguish short-term event/gamma trades, swing positioning, LEAPS, stock substitution, and hedging.
   7. Separate directional intent from volatility intent and cross-check IV behavior, P/C versus baseline, concentration, underlying price action, repeated expiries, and contradictory evidence.
   8. Allow `unknown` or `suspected structure`; never force a bullish/bearish conclusion when order IDs, stock legs, opening/closing flags, or complete strategy legs are unavailable.
 - Summaries should rank A (clear structure/direction plus opening and size evidence), B (at least two independent supporting conditions without a strong contradiction), and C/downgraded (large activity but ambiguous, low V/OI, closing/rolling risk, incomplete structure, or conflicting evidence). Explain notable exclusions and contradictions.
+- `MULTI_LEG` events may be paired only when the minute and quantity match; never force-pair `SINGLE_LEG`. `NEUTRAL` events may support size and contract-heat evidence but must not enter structure direction or naked-leg bullish/bearish totals.
 
 ## Low-Token Complete Review Workflow
 

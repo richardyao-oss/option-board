@@ -11,11 +11,11 @@ if not exist ".venv-futu\Scripts\python.exe" (
   if errorlevel 1 exit /b 1
 )
 echo Installing dependencies into .venv-futu...
-".venv-futu\Scripts\python.exe" -m pip install -i https://pypi.org/simple futu-api pandas
+".venv-futu\Scripts\python.exe" -m pip install -i https://pypi.org/simple futu-api==10.8.6808 pandas
 if errorlevel 1 (
   echo.
   echo Official PyPI failed. Trying Aliyun mirror...
-  ".venv-futu\Scripts\python.exe" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ futu-api pandas
+  ".venv-futu\Scripts\python.exe" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ futu-api==10.8.6808 pandas
 )
 if errorlevel 1 (
   echo.

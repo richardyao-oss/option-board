@@ -38,7 +38,7 @@ run_intraday_report.cmd
 - `daily_option_report.py`: 主采集与报告生成入口。
 - `dashboard_renderer.py`: HTML 看板渲染。
 - `option_screen_monitor.py`: Futu 期权筛选器采集与聚合。
-- `option_unusual_monitor.py`: 衍生品异动文本解析。
+- `option_unusual_monitor.py`: 结构化期权异动分页抓取、去重和美东交易日过滤。
 - `dashboard_analysis.py`: 只读本地 CSV 的横向分析工具，不调用 Futu。
 - `git_sync_update.py`: Git 同步刷新事务。
 - `data/`: 最新核心数据快照。

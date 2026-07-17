@@ -12,8 +12,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
-import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -37,6 +35,7 @@ AGG_COLUMNS = [
     "put_share",
     "put_call_ratio",
     "contracts_seen",
+    "volume_basis",
 ]
 SIGNAL_COLUMNS = [
     "snapshot_date",
@@ -70,8 +69,6 @@ INTRADAY_SIGNAL_COLUMNS = INTRADAY_META_COLUMNS + SIGNAL_COLUMNS
 SNAPSHOT_STATUS_FILE = "option_screen_snapshot_status.json"
 VOLUME_CONTRACT_SNAPSHOT_FILE = "option_screen_volume_contract_snapshot.csv"
 UNUSUAL_SNAPSHOT_FILE = "option_unusual_snapshot.csv"
-INTRADAY_UNUSUAL_TIME_RANGE = 1
-COMPLETE_UNUSUAL_TIME_RANGE = 3
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -251,7 +248,6 @@ def write_snapshot_rows(
 def collection_scope(
     args: argparse.Namespace,
     watchlist: list[str] | None = None,
-    unusual_time_range: int = INTRADAY_UNUSUAL_TIME_RANGE,
 ) -> dict[str, Any]:
     configured_symbols = rg.configured_theme_symbols()
     return {
@@ -264,11 +260,12 @@ def collection_scope(
         "option_screen_volume_sort": "volume",
         "option_screen_volume_pages": 1,
         "option_screen_volume_page_count": int(args.volume_page_count),
-        "aggregate_volume_basis": "turnover_screen_rows",
-        "pcr_basis": "volume_from_turnover_screen_rows",
+        "aggregate_volume_basis": "underlying_overview",
+        "pcr_basis": "get_option_underlying_overview_volume",
         "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
-        "option_unusual_source": "get_derivative_unusual(option_unusual)",
-        "option_unusual_time_range_days": unusual_time_range,
+        "option_volume_source": "get_option_underlying_overview",
+        "option_unusual_source": "get_option_event",
+        "option_unusual_filter": "owner_list+target_et_trade_date",
         "partial_merge": bool(getattr(args, "merge_partial", False)),
     }
 
@@ -276,31 +273,37 @@ def collection_scope(
 def collect_option_unusual_rows(
     watchlist: list[str],
     snapshot_date: str,
-    request_pause: float,
-    time_range: int,
-) -> list[dict[str, Any]]:
-    try:
-        rows, warnings, stats = oum.collect_unusual_rows_with_stats(
-            watchlist=watchlist,
-            snapshot_date=snapshot_date,
-            request_pause=request_pause,
-            time_range=time_range,
-            language_id=0,
-        )
-    except Exception as exc:
-        print(f"[warn] option unusual collection failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return []
-    for warning in warnings:
-        print(f"[warn] option unusual: {warning}", file=sys.stderr)
-    print(
-        "Option unusual parse stats: "
-        f"{stats['parsed_records']}/{stats['raw_records']} parsed, "
-        f"{stats['excluded_neutral_records']} neutral excluded, "
-        f"{stats['excluded_other_trade_date_records']} other trade date excluded, "
-        f"{stats['unparsed_records']} unparsed, "
-        f"{stats['symbols_failed']} symbols failed"
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows, stats = oum.collect_unusual_rows_with_stats(
+        watchlist=watchlist,
+        snapshot_date=snapshot_date,
     )
-    return rows
+    print(
+        "Option event stats: "
+        f"{stats['rows_received']}/{stats['all_count']} received, "
+        f"{stats['rows_stored']} stored, "
+        f"{stats['exact_duplicates_removed']} exact duplicates removed, "
+        f"{stats['neutral_records_kept']} neutral kept"
+    )
+    return rows, stats
+
+
+def add_collection_stats(scope: dict[str, Any], stats: dict[str, Any], overview_count: int) -> None:
+    scope.update(
+        {
+            "option_event_all_count": int(stats.get("all_count", 0)),
+            "option_event_pages": int(stats.get("pages", 0)),
+            "option_event_rows_received": int(stats.get("rows_received", 0)),
+            "option_event_exact_duplicates_removed": int(stats.get("exact_duplicates_removed", 0)),
+            "option_event_rows_stored": int(stats.get("rows_stored", 0)),
+            "option_event_neutral_records_kept": int(stats.get("neutral_records_kept", 0)),
+            "option_overview_symbol_count": int(overview_count),
+        }
+    )
+
+
+def row_volume_basis(row: dict[str, Any]) -> str:
+    return str(row.get("volume_basis") or "option_screen_turnover")
 
 
 def average(rows: list[dict[str, Any]], key: str) -> float:
@@ -326,7 +329,10 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
     for symbol, rows in by_symbol.items():
         rows = sorted(rows, key=lambda row: row["snapshot_date"])
         for idx, row in enumerate(rows):
-            prior = rows[max(0, idx - 6):idx]
+            basis = row_volume_basis(row)
+            prior = [candidate for candidate in rows[:idx] if row_volume_basis(candidate) == basis][-6:]
+            history_days = len(prior)
+            has_baseline = history_days >= min_history_days
             call_volume = safe_int(row.get("call_volume"))
             put_volume = safe_int(row.get("put_volume"))
             total_volume = safe_int(row.get("total_volume"))
@@ -352,7 +358,7 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
                     "prior_direction": "",
                     "direction_share_base": "",
                     "reversal_bonus": "",
-                    "history_days": len(prior),
+                    "history_days": history_days,
                 })
                 continue
 
@@ -365,20 +371,19 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
                 direction_base = average(prior, "put_volume")
 
             total_base = average(prior, "total_volume")
-            direction_x = multiplier(direction_volume, direction_base)
-            total_x = multiplier(total_volume, total_base)
-            history_days = len(prior)
+            direction_x = multiplier(direction_volume, direction_base) if has_baseline else 0.0
+            total_x = multiplier(total_volume, total_base) if has_baseline else 0.0
             prior_call_share = average(prior, "call_share")
             prior_put_share = average(prior, "put_share")
             prior_direction = ""
             prior_direction_share = 0.0
             direction_share_base = 0.0
-            if history_days:
+            if has_baseline:
                 prior_direction, prior_direction_share = direction_from_shares(prior_call_share, prior_put_share)
                 direction_share_base = prior_call_share if direction == "CALL" else prior_put_share
 
             reasons: list[str] = [f"{direction} 占比 {direction_share:.0%}"]
-            if history_days:
+            if has_baseline:
                 reasons.append(f"{direction} 较基线 {direction_x:.1f}x")
                 reasons.append(f"总量较基线 {total_x:.1f}x")
             else:
@@ -387,7 +392,7 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
             reversal_bonus = 0.0
             reversal_shift = max(0.0, direction_share - direction_share_base)
             has_direction_reversal = (
-                history_days
+                has_baseline
                 and total_volume >= min_total
                 and prior_direction in {"CALL", "PUT"}
                 and prior_direction != direction
@@ -400,7 +405,7 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
                 reasons.append(f"方向反转 {prior_direction}->{direction}, 占比提升 {reversal_shift:.0%}")
 
             score = direction_share * 40
-            if history_days:
+            if has_baseline:
                 score += min(direction_x, 5.0) * 8 + min(total_x, 5.0) * 6
             else:
                 score += 20
@@ -417,10 +422,10 @@ def build_signals(all_agg_rows: list[dict[str, Any]], min_total: int, min_histor
                 "call_share": round(call_share, 4),
                 "put_share": round(put_share, 4),
                 "put_call_ratio": round(pcr, 4),
-                "direction_x_base": round(direction_x, 3) if history_days else "",
-                "total_x_base": round(total_x, 3) if history_days else "",
-                "prior_direction": prior_direction if history_days else "",
-                "direction_share_base": round(direction_share_base, 4) if history_days else "",
+                "direction_x_base": round(direction_x, 3) if has_baseline else "",
+                "total_x_base": round(total_x, 3) if has_baseline else "",
+                "prior_direction": prior_direction if has_baseline else "",
+                "direction_share_base": round(direction_share_base, 4) if has_baseline else "",
                 "reversal_bonus": round(reversal_bonus, 2) if reversal_bonus else "",
                 "history_days": history_days,
             })
@@ -532,14 +537,25 @@ def last_completed_us_trade_date(now: datetime | None = None) -> date:
 
 
 def ensure_preopen_collection_window(allow_market_hours: bool = False) -> None:
-    if allow_market_hours or not is_us_regular_session():
+    del allow_market_hours
+    if not is_us_regular_session():
         return
     et_now = datetime.now(ZoneInfo("America/New_York"))
     raise RuntimeError(
         "Refusing preopen collection during the US regular session "
-        f"({et_now:%Y-%m-%d %H:%M:%S ET}). Use --mode intraday now, "
-        "or run --mode preopen before the next US open / after the US close."
+        f"({et_now:%Y-%m-%d %H:%M:%S ET}). The overview API has no historical-date parameter; "
+        "use --mode intraday now, or run --mode preopen after the US close."
     )
+
+
+def ensure_overview_target_date(mode: str, snapshot_date: str) -> None:
+    expected = current_us_trade_date() if mode == "intraday" else last_completed_us_trade_date()
+    if snapshot_date != expected.isoformat():
+        raise RuntimeError(
+            "get_option_underlying_overview has no historical-date parameter: "
+            f"{mode} target must be {expected.isoformat()}, got {snapshot_date}. "
+            "Older dates may only be re-analyzed from saved local complete data."
+        )
 
 
 def intraday_metadata(trade_date: str, scope: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -596,14 +612,11 @@ def main() -> int:
     daily_signal_path = args.data_dir / "daily_option_signals.csv"
     quote_snapshot_path = args.data_dir / "current_quote_snapshot.json"
     snapshot_status_path = args.data_dir / SNAPSHOT_STATUS_FILE
-    unusual_time_range = (
-        INTRADAY_UNUSUAL_TIME_RANGE if args.mode == "intraday" else COMPLETE_UNUSUAL_TIME_RANGE
-    )
-    scope = collection_scope(args, watchlist, unusual_time_range)
+    scope = collection_scope(args, watchlist)
 
     if args.mode == "intraday":
         snapshot_date = args.snapshot_date or current_us_trade_date().isoformat()
-        metadata = intraday_metadata(snapshot_date, scope)
+        ensure_overview_target_date("intraday", snapshot_date)
         contracts, total_seen = osm.collect_screen_rows(
             watchlist=watchlist,
             pages=args.pages,
@@ -619,10 +632,10 @@ def main() -> int:
             request_pause=args.request_pause,
             sort_by="volume",
         )
-        unusual_rows = collect_option_unusual_rows(
-            watchlist, snapshot_date, args.request_pause, unusual_time_range
-        )
-        aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
+        unusual_rows, event_stats = collect_option_unusual_rows(watchlist, snapshot_date)
+        aggregates = osm.collect_overview_aggregates(watchlist, snapshot_date, contracts)
+        add_collection_stats(scope, event_stats, len(aggregates))
+        metadata = intraday_metadata(snapshot_date, scope)
 
         write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
         write_snapshot_rows(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, snapshot_date, watchlist, args.merge_partial)
@@ -664,6 +677,7 @@ def main() -> int:
 
     ensure_preopen_collection_window(args.allow_market_hours_preopen)
     snapshot_date = args.snapshot_date or last_completed_us_trade_date().isoformat()
+    ensure_overview_target_date("preopen", snapshot_date)
     contracts, total_seen = osm.collect_screen_rows(
         watchlist=watchlist,
         pages=args.pages,
@@ -679,10 +693,9 @@ def main() -> int:
         request_pause=args.request_pause,
         sort_by="volume",
     )
-    unusual_rows = collect_option_unusual_rows(
-        watchlist, snapshot_date, args.request_pause, unusual_time_range
-    )
-    aggregates = osm.aggregate_contracts(contracts, snapshot_date, watchlist)
+    unusual_rows, event_stats = collect_option_unusual_rows(watchlist, snapshot_date)
+    aggregates = osm.collect_overview_aggregates(watchlist, snapshot_date, contracts)
+    add_collection_stats(scope, event_stats, len(aggregates))
 
     write_snapshot_rows(daily_contract_path, osm.CONTRACT_COLUMNS, contracts, snapshot_date, watchlist, args.merge_partial)
     write_snapshot_rows(daily_volume_contract_path, osm.CONTRACT_COLUMNS, volume_contracts, snapshot_date, watchlist, args.merge_partial)

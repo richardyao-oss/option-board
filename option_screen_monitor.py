@@ -46,6 +46,7 @@ AGG_COLUMNS = [
     "put_share",
     "put_call_ratio",
     "contracts_seen",
+    "volume_basis",
 ]
 
 
@@ -295,9 +296,83 @@ def aggregate_contracts(rows: list[dict[str, Any]], snapshot_date: str, watchlis
                 "call_share": round(call_volume / total, 4) if total else 0.0,
                 "put_share": round(put_volume / total, 4) if total else 0.0,
                 "put_call_ratio": round(put_volume / call_volume, 4) if call_volume else (999.0 if put_volume else 0.0),
+                "volume_basis": "option_screen_turnover",
             }
         )
     return output
+
+
+def aggregate_overview_records(
+    records: list[dict[str, Any]],
+    snapshot_date: str,
+    watchlist: list[str],
+    contracts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    requested = {str(symbol).upper() for symbol in watchlist}
+    by_code: dict[str, dict[str, Any]] = {}
+    for record in records:
+        code = str(record.get("code") or "").upper()
+        if code in by_code:
+            raise RuntimeError(f"get_option_underlying_overview returned duplicate symbol: {code}")
+        by_code[code] = record
+    returned = set(by_code)
+    if returned != requested:
+        missing = sorted(requested - returned)
+        unexpected = sorted(returned - requested)
+        raise RuntimeError(
+            "get_option_underlying_overview coverage mismatch: "
+            f"missing={missing or 'none'}, unexpected={unexpected or 'none'}"
+        )
+
+    contracts_seen: dict[str, int] = {symbol: 0 for symbol in requested}
+    for contract in contracts:
+        symbol = str(contract.get("underlying") or "").upper()
+        if symbol in contracts_seen:
+            contracts_seen[symbol] += 1
+
+    aggregates: list[dict[str, Any]] = []
+    for symbol in watchlist:
+        code = str(symbol).upper()
+        record = by_code[code]
+        call_volume = safe_int(record.get("call_volume"))
+        put_volume = safe_int(record.get("put_volume"))
+        total = call_volume + put_volume
+        aggregates.append(
+            {
+                "snapshot_date": snapshot_date,
+                "underlying": code,
+                "call_volume": call_volume,
+                "put_volume": put_volume,
+                "total_volume": total,
+                "call_share": round(call_volume / total, 4) if total else 0.0,
+                "put_share": round(put_volume / total, 4) if total else 0.0,
+                "put_call_ratio": round(put_volume / call_volume, 4) if call_volume else (999.0 if put_volume else 0.0),
+                "contracts_seen": contracts_seen[code],
+                "volume_basis": "underlying_overview",
+            }
+        )
+    return aggregates
+
+
+def collect_overview_aggregates(
+    watchlist: list[str],
+    snapshot_date: str,
+    contracts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    prepare_futu_import_environment()
+    from futu import RET_OK
+
+    normalized = [str(symbol).upper() for symbol in watchlist]
+    ctx = create_quote_context()
+    try:
+        ret, frame = ctx.get_option_underlying_overview(normalized)
+    finally:
+        ctx.close()
+    if ret != RET_OK:
+        raise RuntimeError(f"get_option_underlying_overview failed: {frame}")
+    if frame is None:
+        raise RuntimeError("get_option_underlying_overview returned no DataFrame")
+    return aggregate_overview_records(frame.to_dict("records"), snapshot_date, normalized, contracts)
 
 
 def fetch_market_snapshot_quotes(symbols: list[str]) -> dict[str, dict[str, Any]]:

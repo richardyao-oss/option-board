@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 import tempfile
 import unittest
 from argparse import Namespace
+from datetime import date, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -11,6 +13,7 @@ import daily_option_report as dor
 import dashboard_renderer
 import git_sync_update as gsu
 import option_unusual_monitor as oum
+import option_screen_monitor as osm
 import report_groups as rg
 
 
@@ -112,22 +115,25 @@ class CoreLogicTests(unittest.TestCase):
         self.assertNotIn("--watchlist-source", command)
         self.assertNotIn("--group-name", command)
 
-    def test_complete_review_uses_wider_unusual_window_than_intraday(self) -> None:
-        self.assertEqual(dor.INTRADAY_UNUSUAL_TIME_RANGE, 1)
-        self.assertEqual(dor.COMPLETE_UNUSUAL_TIME_RANGE, 3)
-        self.assertEqual(
-            dor.collection_scope(
-                Namespace(
-                    pages=1,
-                    page_count=200,
-                    volume_page_count=10,
-                    merge_partial=False,
-                ),
-                ["US.META"],
-                dor.COMPLETE_UNUSUAL_TIME_RANGE,
-            )["option_unusual_time_range_days"],
-            3,
+    def test_collection_scope_uses_new_option_sources(self) -> None:
+        scope = dor.collection_scope(
+            Namespace(pages=1, page_count=200, volume_page_count=10, merge_partial=False),
+            ["US.META"],
         )
+
+        self.assertEqual(scope["option_unusual_source"], "get_option_event")
+        self.assertEqual(scope["option_volume_source"], "get_option_underlying_overview")
+        self.assertEqual(scope["aggregate_volume_basis"], "underlying_overview")
+        self.assertNotIn("option_unusual_time_range_days", scope)
+
+    def test_overview_date_guards_cannot_be_forced_into_historical_mode(self) -> None:
+        with mock.patch.object(dor, "current_us_trade_date", return_value=date(2026, 7, 17)):
+            dor.ensure_overview_target_date("intraday", "2026-07-17")
+            with self.assertRaisesRegex(RuntimeError, "no historical-date parameter"):
+                dor.ensure_overview_target_date("intraday", "2026-07-16")
+        with mock.patch.object(dor, "is_us_regular_session", return_value=True):
+            with self.assertRaisesRegex(RuntimeError, "Refusing preopen collection"):
+                dor.ensure_preopen_collection_window(allow_market_hours=True)
 
     def test_double_click_update_wrapper_keeps_error_visible(self) -> None:
         script = (ROOT / "git_sync_update.cmd").read_text(encoding="utf-8")
@@ -135,6 +141,65 @@ class CoreLogicTests(unittest.TestCase):
         self.assertIn("The previous dashboard has been preserved.", script)
         self.assertIn('type "%LOG%"', script)
         self.assertIn("pause", script)
+
+    def test_git_validation_requires_new_sources_and_complete_pagination(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data").mkdir()
+            (root / "reports").mkdir()
+            target = "2026-07-17"
+            dor.write_csv(
+                root / "data/option_screen_underlying_snapshot.csv",
+                osm.AGG_COLUMNS,
+                [{
+                    "snapshot_date": target,
+                    "underlying": "US.META",
+                    "call_volume": 10,
+                    "put_volume": 5,
+                    "total_volume": 15,
+                    "call_share": 0.6667,
+                    "put_share": 0.3333,
+                    "put_call_ratio": 0.5,
+                    "contracts_seen": 1,
+                    "volume_basis": "underlying_overview",
+                }],
+            )
+            dor.write_csv(
+                root / "data/option_screen_contract_snapshot.csv",
+                osm.CONTRACT_COLUMNS,
+                [{"snapshot_date": target, "underlying": "US.META", "option_code": "US.META260717C00800"}],
+            )
+            dor.write_csv(
+                root / "data/option_unusual_snapshot.csv",
+                oum.UNUSUAL_COLUMNS,
+                [{"snapshot_date": target, "underlying": "US.META", "option_code": "US.META260717C00800"}],
+            )
+            scope = {
+                "option_unusual_source": "get_option_event",
+                "option_volume_source": "get_option_underlying_overview",
+                "option_event_rows_received": 1,
+                "option_event_all_count": 1,
+                "option_event_pages": 1,
+                "option_overview_symbol_count": 1,
+            }
+            status_path = root / "data/option_screen_snapshot_status.json"
+            status_path.write_text(json.dumps({
+                "snapshot_date": target,
+                "snapshot_type": "intraday",
+                "collection_scope": scope,
+            }), encoding="utf-8")
+            (root / "reports/options_anomaly_report.html").write_text(target, encoding="utf-8")
+
+            with mock.patch.object(gsu, "ROOT", root):
+                self.assertEqual(gsu.validate_outputs("intraday", ["US.META"], True)[2], 1)
+                scope["option_event_all_count"] = 2
+                status_path.write_text(json.dumps({
+                    "snapshot_date": target,
+                    "snapshot_type": "intraday",
+                    "collection_scope": scope,
+                }), encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "pagination is incomplete"):
+                    gsu.validate_outputs("intraday", ["US.META"], True)
 
     def test_build_signals_includes_reversal_bonus(self) -> None:
         rows = [
@@ -342,56 +407,130 @@ class CoreLogicTests(unittest.TestCase):
         self.assertEqual(table_html.count("2026-06-26"), 1)
         self.assertIn("class='expiry-break'", table_html)
 
-    def test_option_unusual_parser_reports_failures(self) -> None:
-        content = (
-            "6.6 03:57，出现一笔买入看涨期权交易，成交量为3486张，"
-            "未平仓数为668张，V/OI值为8.2，交易金额为1945188USD，"
-            "合约行权价是307.5，到期日为2026/06/12\n"
-            "6.6 04:00，出现一笔无法识别的期权文本"
-        )
-        rows, stats = oum.parse_unusual_content_with_stats(content, "2026-06-05", "US.AAPL")
+    def test_structured_option_events_deduplicate_filter_date_and_keep_neutral(self) -> None:
+        target_ts = datetime.fromisoformat("2026-07-17T10:15:03-04:00").timestamp()
+        base = {
+            "option_code": "US.MDB260724C00400",
+            "owner_code": "US.MDB",
+            "fill_timestamp": target_ts,
+            "ticker_type": "BUY",
+            "price": 1.25,
+            "volume": 500,
+            "turnover": 62_500,
+            "option_type": "CALL",
+            "strike_price": 400,
+            "strike_time": "2026-07-24",
+            "total_open_interest": 100,
+            "total_volume": 750,
+            "vo_ratio": 7.5,
+            "strategy_type": "SINGLE_LEG",
+        }
+        neutral = {
+            **base,
+            "option_code": "US.MDB260724P00350",
+            "ticker_type": "NEUTRAL",
+            "price": 2,
+            "turnover": 100_000,
+            "total_open_interest": None,
+            "vo_ratio": None,
+            "option_type": "PUT",
+            "strike_price": 350,
+        }
+        wrong_date = {**base, "fill_timestamp": datetime.fromisoformat("2026-07-16T10:15:03-04:00").timestamp()}
 
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(stats["raw_records"], 2)
-        self.assertEqual(stats["parsed_records"], 1)
-        self.assertEqual(stats["excluded_neutral_records"], 0)
-        self.assertEqual(stats["unparsed_records"], 1)
-        self.assertEqual(rows[0]["direction"], "BUY")
-        self.assertEqual(rows[0]["option_type"], "CALL")
-
-    def test_option_unusual_parser_excludes_neutral_records(self) -> None:
-        content = (
-            "6.8 22:15，出现一笔中性看涨期权交易，成交量为3000张，"
-            "未平仓数为53718张，V/OI值为0.5，交易金额为420000USD，"
-            "合约行权价是30，到期日为2027/01/15\n"
-            "6.8 22:16，出现一笔买入看涨期权交易，成交量为2000张，"
-            "未平仓数为53718张，V/OI值为0.5，交易金额为280000USD，"
-            "合约行权价是30，到期日为2027/01/15"
-        )
-        rows, stats = oum.parse_unusual_content_with_stats(content, "2026-06-08", "US.NOK")
-
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(stats["raw_records"], 2)
-        self.assertEqual(stats["parsed_records"], 1)
-        self.assertEqual(stats["excluded_neutral_records"], 1)
-        self.assertEqual(stats["unparsed_records"], 0)
-        self.assertEqual(rows[0]["direction"], "BUY")
-
-    def test_option_unusual_parser_keeps_only_target_us_trade_date(self) -> None:
-        content = (
-            "7.9 01:45，出现一笔卖出看涨期权交易，成交量为14000张，"
-            "未平仓数为1000张，V/OI值为14，交易金额为7420000USD，"
-            "合约行权价是120，到期日为2027/06/17\n"
-            "7.9 22:27，出现一笔买入看涨期权交易，成交量为498张，"
-            "未平仓数为145张，V/OI值为3.4，交易金额为672300USD，"
-            "合约行权价是85，到期日为2027/03/19"
+        rows, stats = oum.normalize_event_records(
+            [base, dict(base), neutral, wrong_date], "2026-07-17", ["US.MDB"]
         )
 
-        rows, stats = oum.parse_unusual_content_with_stats(content, "2026-07-09", "US.PDD")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(stats["exact_duplicates_removed"], 1)
+        self.assertEqual(stats["excluded_other_trade_date"], 1)
+        self.assertEqual(stats["neutral_records_kept"], 1)
+        self.assertEqual({row["direction"] for row in rows}, {"BUY", "NEUTRAL"})
+        self.assertEqual(next(row for row in rows if row["direction"] == "BUY")["vo_ratio"], 7.5)
+        self.assertEqual(next(row for row in rows if row["direction"] == "NEUTRAL")["open_interest"], "")
 
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["event_time"], "07-09 22:27")
-        self.assertEqual(stats["excluded_other_trade_date_records"], 1)
+    def test_option_event_pagination_rejects_missing_rows_and_repeated_cursor(self) -> None:
+        class Frame:
+            def __init__(self, rows: list[dict[str, str]]) -> None:
+                self.rows = rows
+
+            def to_dict(self, orient: str) -> list[dict[str, str]]:
+                self.assert_orient = orient
+                return self.rows
+
+        class Context:
+            def __init__(self, payloads: list[dict[str, object]]) -> None:
+                self.payloads = iter(payloads)
+
+            def get_option_event(self, *_args: object, **_kwargs: object) -> tuple[int, dict[str, object]]:
+                return 0, next(self.payloads)
+
+        incomplete = Context([
+            {"event_list": Frame([{"id": "one"}]), "all_count": 2, "next_page": ""}
+        ])
+        with self.assertRaisesRegex(RuntimeError, "pagination incomplete"):
+            oum.collect_event_pages(incomplete, ["US.MDB"], "2026-07-17")
+
+        repeated = Context([
+            {"event_list": Frame([{"id": "one"}]), "all_count": 2, "next_page": "same"},
+            {"event_list": Frame([{"id": "two"}]), "all_count": 2, "next_page": "same"},
+        ])
+        with self.assertRaisesRegex(RuntimeError, "repeated pagination cursor"):
+            oum.collect_event_pages(repeated, ["US.MDB"], "2026-07-17")
+
+    def test_underlying_overview_is_complete_and_sets_true_volume_basis(self) -> None:
+        records = [
+            {"code": "US.A", "call_volume": 600, "put_volume": 400},
+            {"code": "US.B", "call_volume": 100, "put_volume": 300},
+        ]
+        contracts = [
+            {"underlying": "US.A"},
+            {"underlying": "US.A"},
+            {"underlying": "US.B"},
+        ]
+
+        rows = osm.aggregate_overview_records(records, "2026-07-17", ["US.A", "US.B"], contracts)
+
+        self.assertEqual(rows[0]["total_volume"], 1000)
+        self.assertEqual(rows[0]["put_call_ratio"], 0.6667)
+        self.assertEqual(rows[0]["contracts_seen"], 2)
+        self.assertTrue(all(row["volume_basis"] == "underlying_overview" for row in rows))
+        with self.assertRaisesRegex(RuntimeError, "coverage mismatch"):
+            osm.aggregate_overview_records(records[:1], "2026-07-17", ["US.A", "US.B"], contracts)
+
+    def test_signal_baseline_never_crosses_volume_basis(self) -> None:
+        def row(day: str, basis: str, total: int) -> dict[str, str]:
+            return {
+                "snapshot_date": day,
+                "underlying": "US.TEST",
+                "call_volume": str(total * 3 // 4),
+                "put_volume": str(total // 4),
+                "total_volume": str(total),
+                "call_share": "0.75",
+                "put_share": "0.25",
+                "put_call_ratio": "0.333",
+                "volume_basis": basis,
+            }
+
+        rows = [
+            row("2026-07-10", "", 100),
+            row("2026-07-13", "", 100),
+            row("2026-07-14", "", 100),
+            row("2026-07-15", "underlying_overview", 100),
+            row("2026-07-16", "underlying_overview", 100),
+            row("2026-07-17", "underlying_overview", 100),
+            row("2026-07-20", "underlying_overview", 200),
+        ]
+
+        signals = dor.build_signals(rows, min_total=1, min_history_days=3)
+        first_new = next(item for item in signals if item["snapshot_date"] == "2026-07-15")
+        fourth_new = next(item for item in signals if item["snapshot_date"] == "2026-07-20")
+
+        self.assertEqual(first_new["history_days"], 0)
+        self.assertEqual(first_new["total_x_base"], "")
+        self.assertEqual(fourth_new["history_days"], 3)
+        self.assertEqual(fourth_new["total_x_base"], 2.0)
 
     def test_replace_rows_for_date_symbols_preserves_other_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
