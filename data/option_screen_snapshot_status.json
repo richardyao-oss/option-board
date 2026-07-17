@@ -1,10 +1,10 @@
 {
-  "snapshot_time": "2026-07-17 20:44:09",
-  "snapshot_type": "complete",
-  "trade_date": "2026-07-16",
-  "snapshot_date": "2026-07-16",
-  "as_of_et": "2026-07-17 08:44:09 ET",
-  "as_of_bjt": "2026-07-17 20:44:09 BJT",
+  "snapshot_time": "2026-07-18 01:49:47",
+  "snapshot_type": "intraday",
+  "trade_date": "2026-07-17",
+  "snapshot_date": "2026-07-17",
+  "as_of_et": "2026-07-17 13:49:47 ET",
+  "as_of_bjt": "2026-07-18 01:49:47 BJT",
   "collection_scope": {
     "watchlist_source": "dashboard_config",
     "dashboard_config_symbol_count": 70,
@@ -15,11 +15,19 @@
     "option_screen_volume_sort": "volume",
     "option_screen_volume_pages": 1,
     "option_screen_volume_page_count": 10,
-    "aggregate_volume_basis": "turnover_screen_rows",
-    "pcr_basis": "volume_from_turnover_screen_rows",
+    "aggregate_volume_basis": "underlying_overview",
+    "pcr_basis": "get_option_underlying_overview_volume",
     "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
-    "option_unusual_source": "get_derivative_unusual(option_unusual)",
-    "option_unusual_time_range_days": 3,
-    "partial_merge": false
+    "option_volume_source": "get_option_underlying_overview",
+    "option_unusual_source": "get_option_event",
+    "option_unusual_filter": "owner_list+target_et_trade_date",
+    "partial_merge": false,
+    "option_event_all_count": 492,
+    "option_event_pages": 2,
+    "option_event_rows_received": 492,
+    "option_event_exact_duplicates_removed": 7,
+    "option_event_rows_stored": 485,
+    "option_event_neutral_records_kept": 37,
+    "option_overview_symbol_count": 70
   }
 }
