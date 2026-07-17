@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import report_groups as rg
+import option_screen_monitor as osm
 from runtime_env import PYTHON, ROOT, clean_env_for_child, configure_runtime
 
 
@@ -268,7 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pages", type=int, default=1)
     parser.add_argument("--page-count", type=int, default=200)
     parser.add_argument("--volume-page-count", type=int, default=10)
-    parser.add_argument("--request-pause", type=float, default=3.8)
+    parser.add_argument("--request-pause", type=float, default=osm.DEFAULT_REQUEST_PAUSE)
     parser.add_argument("--timeout", type=int, default=2400)
     parser.add_argument("--allow-market-hours-preopen", action="store_true")
     parser.add_argument("--merge-partial", action="store_true")

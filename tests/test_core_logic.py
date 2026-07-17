@@ -126,6 +126,9 @@ class CoreLogicTests(unittest.TestCase):
         self.assertEqual(scope["aggregate_volume_basis"], "underlying_overview")
         self.assertNotIn("option_unusual_time_range_days", scope)
 
+    def test_option_screen_default_pause_respects_rolling_limit(self) -> None:
+        self.assertGreater(osm.DEFAULT_REQUEST_PAUSE * 10, 30)
+
     def test_overview_date_guards_cannot_be_forced_into_historical_mode(self) -> None:
         with mock.patch.object(dor, "current_us_trade_date", return_value=date(2026, 7, 17)):
             dor.ensure_overview_target_date("intraday", "2026-07-17")

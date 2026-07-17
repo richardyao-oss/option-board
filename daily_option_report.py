@@ -593,7 +593,7 @@ def main() -> int:
     parser.add_argument("--pages", type=int, default=1)
     parser.add_argument("--page-count", type=int, default=200)
     parser.add_argument("--volume-page-count", type=int, default=10)
-    parser.add_argument("--request-pause", type=float, default=3.2)
+    parser.add_argument("--request-pause", type=float, default=osm.DEFAULT_REQUEST_PAUSE)
     parser.add_argument("--min-total", type=int, default=10000)
     parser.add_argument("--min-history-days", type=int, default=3)
     parser.add_argument("--html", type=Path, default=Path("reports/options_anomaly_report.html"))

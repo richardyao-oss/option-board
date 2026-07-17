@@ -24,6 +24,8 @@ from runtime_env import configure_runtime
 
 
 DEFAULT_WATCHLIST = Path("config/watchlist.json")
+# OpenD allows 10 option-screen requests per rolling 30 seconds.
+DEFAULT_REQUEST_PAUSE = 3.05
 CONTRACT_COLUMNS = [
     "snapshot_date",
     "underlying",
@@ -433,7 +435,7 @@ def main() -> int:
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--pages", type=int, default=5, help="Number of option-screen pages to scan per underlying")
     parser.add_argument("--page-count", type=int, default=200, help="Contracts per option-screen page")
-    parser.add_argument("--request-pause", type=float, default=3.2)
+    parser.add_argument("--request-pause", type=float, default=DEFAULT_REQUEST_PAUSE)
     parser.add_argument("--snapshot-date", default=date.today().isoformat())
     parser.add_argument("--json", action="store_true", dest="output_json")
     args = parser.parse_args()
