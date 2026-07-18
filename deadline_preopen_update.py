@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -49,93 +48,15 @@ def write_progress(path: Path, payload: dict[str, Any]) -> None:
 
 def collect_turnover_for_symbol(
     symbol: str,
-    stock_id: int,
     snapshot_date: str,
     pages: int,
     page_count: int,
 ) -> tuple[list[dict[str, Any]], int]:
-    ctx = osm.create_quote_context()
-    rows: list[dict[str, Any]] = []
-    total_seen = 0
-    try:
-        from futu import RET_OK
-
-        for page in range(pages):
-            req = osm.build_screen_request(
-                page_from=page * page_count,
-                page_count=page_count,
-                stock_id=stock_id,
-                sort_by="turnover",
-            )
-            ret, data = ctx.get_option_screen(req)
-            if ret != RET_OK:
-                print(f"[warn] get_option_screen({symbol}, turnover) failed: {data}", file=sys.stderr)
-                break
-            last_page, _all_count, df = data
-            if df is None or df.empty:
-                break
-            total_seen += len(df)
-            for _, item in df.iterrows():
-                rows.append(
-                    {
-                        "snapshot_date": snapshot_date,
-                        "underlying": symbol,
-                        "option_code": str(item.get("code", "")),
-                        "option_type": osm.option_type_name(item.get("option_type")),
-                        "strike": osm.safe_float(item.get("strike_price")),
-                        "volume": osm.safe_int(item.get("volume")),
-                        "turnover": osm.safe_float(item.get("turnover")),
-                        "open_interest": osm.safe_int(item.get("open_interest")),
-                        "implied_volatility": osm.safe_float(item.get("implied_volatility")),
-                        "premium": osm.safe_float(item.get("premium")),
-                    }
-                )
-            if last_page:
-                break
-    finally:
-        ctx.close()
-    return rows, total_seen
+    return osm.collect_rank_rows([symbol], pages, page_count, snapshot_date, 0, "turnover")
 
 
-def collect_volume_for_symbol(symbol: str, stock_id: int, snapshot_date: str, page_count: int) -> tuple[list[dict[str, Any]], int]:
-    ctx = osm.create_quote_context()
-    rows: list[dict[str, Any]] = []
-    total_seen = 0
-    try:
-        from futu import RET_OK
-
-        req = osm.build_screen_request(
-            page_from=0,
-            page_count=page_count,
-            stock_id=stock_id,
-            sort_by="volume",
-        )
-        ret, data = ctx.get_option_screen(req)
-        if ret != RET_OK:
-            print(f"[warn] get_option_screen({symbol}, volume) failed: {data}", file=sys.stderr)
-            return rows, total_seen
-        _last_page, _all_count, df = data
-        if df is None or df.empty:
-            return rows, total_seen
-        total_seen = len(df)
-        for _, item in df.iterrows():
-            rows.append(
-                {
-                    "snapshot_date": snapshot_date,
-                    "underlying": symbol,
-                    "option_code": str(item.get("code", "")),
-                    "option_type": osm.option_type_name(item.get("option_type")),
-                    "strike": osm.safe_float(item.get("strike_price")),
-                    "volume": osm.safe_int(item.get("volume")),
-                    "turnover": osm.safe_float(item.get("turnover")),
-                    "open_interest": osm.safe_int(item.get("open_interest")),
-                    "implied_volatility": osm.safe_float(item.get("implied_volatility")),
-                    "premium": osm.safe_float(item.get("premium")),
-                }
-            )
-    finally:
-        ctx.close()
-    return rows, total_seen
+def collect_volume_for_symbol(symbol: str, snapshot_date: str, page_count: int) -> tuple[list[dict[str, Any]], int]:
+    return osm.collect_rank_rows([symbol], 1, page_count, snapshot_date, 0, "volume")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -197,12 +118,6 @@ def main() -> int:
     total_seen = 0
     volume_total_seen = 0
 
-    ctx = osm.create_quote_context()
-    try:
-        stock_ids = osm.get_stock_ids(ctx, watchlist)
-    finally:
-        ctx.close()
-
     stopped_reason = ""
     for index, symbol in enumerate(watchlist):
         if not has_time(deadline, args.deadline_guard_seconds):
@@ -216,20 +131,12 @@ def main() -> int:
             if not has_time(deadline, args.deadline_guard_seconds):
                 stopped_reason = f"deadline reached before starting {symbol}"
                 break
-        stock_id = stock_ids.get(symbol)
-        if stock_id is None:
-            print(f"[warn] Missing stock_id for {symbol}", file=sys.stderr)
-            progress["completed_symbols"].append(symbol)
-            progress["remaining_symbols"] = watchlist[index + 1 :]
-            write_progress(progress_path, progress)
-            continue
-
-        turnover_rows, seen = collect_turnover_for_symbol(symbol, stock_id, snapshot_date, args.pages, args.page_count)
+        turnover_rows, seen = collect_turnover_for_symbol(symbol, snapshot_date, args.pages, args.page_count)
         contracts.extend(turnover_rows)
         total_seen += seen
         if has_time(deadline, args.deadline_guard_seconds):
             time.sleep(args.request_pause)
-            volume_rows, volume_seen = collect_volume_for_symbol(symbol, stock_id, snapshot_date, args.volume_page_count)
+            volume_rows, volume_seen = collect_volume_for_symbol(symbol, snapshot_date, args.volume_page_count)
             volume_contracts.extend(volume_rows)
             volume_total_seen += volume_seen
         else:
@@ -271,6 +178,7 @@ def main() -> int:
         progress["stop_reason"] = "deadline reached before global option event fetch"
         write_progress(progress_path, progress)
         return 2
+    dor.add_contract_collection_stats(scope, contracts, volume_contracts)
     unusual_rows, event_stats = dor.collect_option_unusual_rows(watchlist, snapshot_date)
     if not has_time(deadline, args.deadline_guard_seconds):
         progress["status"] = "stopped_before_deadline"

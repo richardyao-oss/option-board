@@ -123,11 +123,58 @@ class CoreLogicTests(unittest.TestCase):
 
         self.assertEqual(scope["option_unusual_source"], "get_option_event")
         self.assertEqual(scope["option_volume_source"], "get_option_underlying_overview")
+        self.assertEqual(scope["option_contract_source"], "get_option_rank")
         self.assertEqual(scope["aggregate_volume_basis"], "underlying_overview")
         self.assertNotIn("option_unusual_time_range_days", scope)
 
-    def test_option_screen_default_pause_respects_rolling_limit(self) -> None:
-        self.assertGreater(osm.DEFAULT_REQUEST_PAUSE * 10, 30)
+    def test_option_rank_mapping_and_pause(self) -> None:
+        self.assertGreater(osm.DEFAULT_REQUEST_PAUSE * 60, 30)
+        row = osm.rank_contract_row(
+            {
+                "code": "US.BBAI260717C3000",
+                "option_type": "CALL",
+                "volume": 10,
+                "turnover": 2500,
+                "open_interest": 4,
+                "iv": 75,
+            },
+            "2026-07-17",
+            "US.BBAI",
+        )
+        self.assertEqual(row["strike"], 3.0)
+        self.assertEqual(row["implied_volatility"], 0.75)
+
+    def test_option_rank_retries_a_transient_failure(self) -> None:
+        class Frame:
+            empty = False
+
+            def __len__(self) -> int:
+                return 1
+
+            def iterrows(self):
+                yield 0, {
+                    "code": "US.TEST260717C100000",
+                    "option_type": "CALL",
+                    "volume": 1,
+                    "turnover": 100,
+                    "open_interest": 2,
+                    "iv": 50,
+                }
+
+        class Context:
+            calls = 0
+
+            def get_option_rank(self, *_args, **_kwargs):
+                self.calls += 1
+                return (1, "timeout", None, 0) if self.calls == 1 else (0, Frame(), None, 1)
+
+            def close(self) -> None:
+                pass
+
+        context = Context()
+        with mock.patch.object(osm, "create_quote_context", return_value=context), mock.patch.object(osm.time, "sleep"):
+            rows, total = osm.collect_rank_rows(["US.TEST"], 1, 10, "2026-07-17", 0, "volume")
+        self.assertEqual((context.calls, total, len(rows)), (2, 1, 1))
 
     def test_overview_date_guards_cannot_be_forced_into_historical_mode(self) -> None:
         with mock.patch.object(dor, "current_us_trade_date", return_value=date(2026, 7, 17)):
@@ -173,6 +220,11 @@ class CoreLogicTests(unittest.TestCase):
                 [{"snapshot_date": target, "underlying": "US.META", "option_code": "US.META260717C00800"}],
             )
             dor.write_csv(
+                root / "data/option_screen_volume_contract_snapshot.csv",
+                osm.CONTRACT_COLUMNS,
+                [{"snapshot_date": target, "underlying": "US.META", "option_code": "US.META260717C00800"}],
+            )
+            dor.write_csv(
                 root / "data/option_unusual_snapshot.csv",
                 oum.UNUSUAL_COLUMNS,
                 [{"snapshot_date": target, "underlying": "US.META", "option_code": "US.META260717C00800"}],
@@ -180,10 +232,13 @@ class CoreLogicTests(unittest.TestCase):
             scope = {
                 "option_unusual_source": "get_option_event",
                 "option_volume_source": "get_option_underlying_overview",
+                "option_contract_source": "get_option_rank",
                 "option_event_rows_received": 1,
                 "option_event_all_count": 1,
                 "option_event_pages": 1,
                 "option_overview_symbol_count": 1,
+                "option_rank_turnover_symbol_count": 1,
+                "option_rank_volume_symbol_count": 1,
             }
             status_path = root / "data/option_screen_snapshot_status.json"
             status_path.write_text(json.dumps({

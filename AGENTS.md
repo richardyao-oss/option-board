@@ -33,11 +33,11 @@ This project is an options anomaly dashboard backed by Futu OpenAPI data. Treat 
 - Single-symbol refreshes are temporary inspection views. A full complete review can replace same-date single-symbol temporary data.
 - Full reviews should scan the complete current watchlist and regenerate the full dashboard.
 - Git worktree must be clean before running synced updates. Do not auto-merge option data conflicts.
-- VIX is special: Futu code is `US..VIX`, option screen category is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
+- VIX is special: Futu code is `US..VIX`, option rank market is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
 - Top contracts should preserve the current mixed logic: turnover top 5 plus volume top 10 after removing duplicates until 10 rows.
-- P/C remains volume-based and must come from `get_option_underlying_overview`; `get_option_screen` is only for the mixed Top 10 contract tables, which should show both volume and turnover.
+- P/C remains volume-based and must come from `get_option_underlying_overview`; `get_option_rank` supplies the turnover and volume rankings for the mixed Top 10 contract tables.
 - Collect unusual trades with paginated `get_option_event`, filtered by the requested symbols and target US trading date. Do not fall back to the legacy natural-language unusual API; abort before writing when event pagination or overview coverage is incomplete.
-- `option_screen_snapshot_status.json` should keep non-destructive collection metadata: screen sort/page counts, P/C basis, Top10 basis, event pagination/de-dup counts, overview coverage, and volume basis.
+- `option_screen_snapshot_status.json` should keep non-destructive collection metadata: rank source/sort/page counts and coverage, P/C basis, Top10 basis, event pagination/de-dup counts, overview coverage, and volume basis.
 
 ## Complete Review Intent Analysis
 

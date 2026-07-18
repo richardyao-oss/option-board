@@ -181,12 +181,15 @@ def validate_outputs(
     report_path = ROOT / "reports" / "options_anomaly_report.html"
     unusual_path = ROOT / "data" / "option_unusual_snapshot.csv"
     aggregate_path = ROOT / "data" / "option_screen_underlying_snapshot.csv"
+    volume_contract_path = ROOT / "data" / "option_screen_volume_contract_snapshot.csv"
     if not status_path.exists():
         raise RuntimeError("Missing option_screen_snapshot_status.json after update.")
     if not report_path.exists():
         raise RuntimeError("Missing options_anomaly_report.html after update.")
     if not unusual_path.exists():
         raise RuntimeError("Missing option_unusual_snapshot.csv after update.")
+    if not volume_contract_path.exists():
+        raise RuntimeError("Missing option_screen_volume_contract_snapshot.csv after update.")
     required_unusual = {"open_interest", "contract_volume", "vo_ratio", "strategy_type"}
     missing_unusual_headers = required_unusual - csv_headers(unusual_path)
     if missing_unusual_headers:
@@ -207,15 +210,22 @@ def validate_outputs(
         raise RuntimeError("Snapshot status does not record get_option_event as the unusual source.")
     if scope.get("option_volume_source") != "get_option_underlying_overview":
         raise RuntimeError("Snapshot status does not record get_option_underlying_overview as the volume source.")
+    if scope.get("option_contract_source") != "get_option_rank":
+        raise RuntimeError("Snapshot status does not record get_option_rank as the contract source.")
     if int(scope.get("option_event_rows_received", -1)) != int(scope.get("option_event_all_count", -2)):
         raise RuntimeError("Option event pagination is incomplete in snapshot status.")
     if int(scope.get("option_event_pages", 0)) < 1:
         raise RuntimeError("Option event pagination page count is missing.")
     if int(scope.get("option_overview_symbol_count", -1)) != len(expected_symbols):
         raise RuntimeError("Option overview coverage count does not match the requested scan scope.")
+    if int(scope.get("option_rank_turnover_symbol_count", -1)) != len(expected_symbols):
+        raise RuntimeError("Option turnover-rank coverage count does not match the requested scan scope.")
+    if int(scope.get("option_rank_volume_symbol_count", -1)) != len(expected_symbols):
+        raise RuntimeError("Option volume-rank coverage count does not match the requested scan scope.")
 
     agg_rows = [row for row in read_csv(ROOT / "data" / "option_screen_underlying_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
     contract_rows = [row for row in read_csv(ROOT / "data" / "option_screen_contract_snapshot.csv") if row.get("snapshot_date") == snapshot_date]
+    volume_contract_rows = [row for row in read_csv(volume_contract_path) if row.get("snapshot_date") == snapshot_date]
     unusual_rows = [row for row in read_csv(unusual_path) if row.get("snapshot_date") == snapshot_date]
     if not agg_rows:
         raise RuntimeError(f"No aggregate rows for {snapshot_date}.")
@@ -233,6 +243,11 @@ def validate_outputs(
         raise RuntimeError(
             f"Unexpected aggregate symbols for {snapshot_date}: {', '.join(extra_symbols)}"
         )
+    for label, rows in (("turnover rank", contract_rows), ("volume rank", volume_contract_rows)):
+        covered = {str(row.get("underlying", "")).upper() for row in rows}
+        missing_contracts = sorted(expected_symbol_set - covered)
+        if missing_contracts:
+            raise RuntimeError(f"Missing {label} symbols for {snapshot_date}: {', '.join(missing_contracts)}")
     if any(str(row.get("volume_basis", "")) != "underlying_overview" for row in agg_rows if row.get("underlying") in expected_symbol_set):
         raise RuntimeError("Current aggregate rows do not use underlying_overview volume basis.")
     if any(str(row.get("snapshot_date", "")) != snapshot_date for row in unusual_rows):

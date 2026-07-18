@@ -194,7 +194,7 @@ Project-specific data notes:
 
 - Single-symbol refreshes are temporary inspection views. A full complete review can replace same-date single-symbol temporary data.
 - Git worktree must be clean before synced updates. Do not auto-merge option data conflicts.
-- VIX is special: Futu code is `US..VIX`, option screen category is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
+- VIX is special: Futu code is `US..VIX`, option rank market is `US_INDEX`, and normal US stock snapshot logic may not provide current price/change.
 - Top contracts use the mixed logic: turnover top 5 plus volume top 10 after removing duplicates until 10 rows.
 - P/C remains volume-based. Top-contract tables show both volume and turnover.
 - `option_screen_snapshot_status.json` records the active collection scope, including page counts, P/C basis, Top10 basis, and unusual time range.

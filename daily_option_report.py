@@ -2,9 +2,8 @@
 """
 Daily options anomaly report.
 
-Safe by design: uses option screen snapshots only and never calls historical
-K-line APIs. The dashboard watchlist is maintained independently in
-report_groups.py.
+Safe by design: uses option rank snapshots and never calls historical K-line
+APIs. The dashboard watchlist is maintained independently in report_groups.py.
 """
 
 from __future__ import annotations
@@ -254,12 +253,13 @@ def collection_scope(
         "watchlist_source": "dashboard_config",
         "dashboard_config_symbol_count": len(configured_symbols),
         "scan_symbol_count": len(watchlist) if watchlist is not None else len(configured_symbols),
-        "option_screen_turnover_sort": "turnover",
-        "option_screen_turnover_pages": int(args.pages),
-        "option_screen_turnover_page_count": int(args.page_count),
-        "option_screen_volume_sort": "volume",
-        "option_screen_volume_pages": 1,
-        "option_screen_volume_page_count": int(args.volume_page_count),
+        "option_contract_source": "get_option_rank",
+        "option_rank_turnover_sort": "turnover",
+        "option_rank_turnover_pages": int(args.pages),
+        "option_rank_turnover_page_count": int(args.page_count),
+        "option_rank_volume_sort": "volume",
+        "option_rank_volume_pages": 1,
+        "option_rank_volume_page_count": int(args.volume_page_count),
         "aggregate_volume_basis": "underlying_overview",
         "pcr_basis": "get_option_underlying_overview_volume",
         "top_contract_basis": "turnover_top5_plus_volume_top10_dedup_to_10",
@@ -298,6 +298,21 @@ def add_collection_stats(scope: dict[str, Any], stats: dict[str, Any], overview_
             "option_event_rows_stored": int(stats.get("rows_stored", 0)),
             "option_event_neutral_records_kept": int(stats.get("neutral_records_kept", 0)),
             "option_overview_symbol_count": int(overview_count),
+        }
+    )
+
+
+def add_contract_collection_stats(
+    scope: dict[str, Any],
+    turnover_rows: list[dict[str, Any]],
+    volume_rows: list[dict[str, Any]],
+) -> None:
+    scope.update(
+        {
+            "option_rank_turnover_rows": len(turnover_rows),
+            "option_rank_turnover_symbol_count": len({row["underlying"] for row in turnover_rows}),
+            "option_rank_volume_rows": len(volume_rows),
+            "option_rank_volume_symbol_count": len({row["underlying"] for row in volume_rows}),
         }
     )
 
@@ -617,14 +632,14 @@ def main() -> int:
     if args.mode == "intraday":
         snapshot_date = args.snapshot_date or current_us_trade_date().isoformat()
         ensure_overview_target_date("intraday", snapshot_date)
-        contracts, total_seen = osm.collect_screen_rows(
+        contracts, total_seen = osm.collect_rank_rows(
             watchlist=watchlist,
             pages=args.pages,
             page_count=args.page_count,
             snapshot_date=snapshot_date,
             request_pause=args.request_pause,
         )
-        volume_contracts, volume_total_seen = osm.collect_screen_rows(
+        volume_contracts, volume_total_seen = osm.collect_rank_rows(
             watchlist=watchlist,
             pages=1,
             page_count=args.volume_page_count,
@@ -632,6 +647,7 @@ def main() -> int:
             request_pause=args.request_pause,
             sort_by="volume",
         )
+        add_contract_collection_stats(scope, contracts, volume_contracts)
         unusual_rows, event_stats = collect_option_unusual_rows(watchlist, snapshot_date)
         aggregates = osm.collect_overview_aggregates(watchlist, snapshot_date, contracts)
         add_collection_stats(scope, event_stats, len(aggregates))
@@ -678,14 +694,14 @@ def main() -> int:
     ensure_preopen_collection_window(args.allow_market_hours_preopen)
     snapshot_date = args.snapshot_date or last_completed_us_trade_date().isoformat()
     ensure_overview_target_date("preopen", snapshot_date)
-    contracts, total_seen = osm.collect_screen_rows(
+    contracts, total_seen = osm.collect_rank_rows(
         watchlist=watchlist,
         pages=args.pages,
         page_count=args.page_count,
         snapshot_date=snapshot_date,
         request_pause=args.request_pause,
     )
-    volume_contracts, volume_total_seen = osm.collect_screen_rows(
+    volume_contracts, volume_total_seen = osm.collect_rank_rows(
         watchlist=watchlist,
         pages=1,
         page_count=args.volume_page_count,
@@ -693,6 +709,7 @@ def main() -> int:
         request_pause=args.request_pause,
         sort_by="volume",
     )
+    add_contract_collection_stats(scope, contracts, volume_contracts)
     unusual_rows, event_stats = collect_option_unusual_rows(watchlist, snapshot_date)
     aggregates = osm.collect_overview_aggregates(watchlist, snapshot_date, contracts)
     add_collection_stats(scope, event_stats, len(aggregates))
