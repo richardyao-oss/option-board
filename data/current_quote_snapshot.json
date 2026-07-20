@@ -1,358 +1,358 @@
 {
-  "snapshot_time": "2026-07-18 10:55:29",
-  "as_of_bjt": "2026-07-18 10:55:29 BJT",
-  "as_of_et": "2026-07-17 22:55:29 ET",
+  "snapshot_time": "2026-07-21 00:05:25",
+  "as_of_bjt": "2026-07-21 00:05:25 BJT",
+  "as_of_et": "2026-07-20 12:05:25 ET",
   "source": "get_market_snapshot",
   "quotes": {
     "US.AAPL": {
-      "stock_price": 333.74,
-      "change_ratio": 0.144,
-      "update_time": "2026-07-17 20:01:11.326"
+      "stock_price": 325.46,
+      "change_ratio": -2.481,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.AMD": {
-      "stock_price": 495.76,
-      "change_ratio": -1.0341,
-      "update_time": "2026-07-17 20:01:05.675"
+      "stock_price": 515.62,
+      "change_ratio": 4.006,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.AMZN": {
-      "stock_price": 247.23,
-      "change_ratio": -1.0645,
-      "update_time": "2026-07-17 20:01:33.483"
+      "stock_price": 252.21,
+      "change_ratio": 2.0143,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.APLD": {
-      "stock_price": 25.79,
-      "change_ratio": -2.4584,
-      "update_time": "2026-07-17 20:01:08.728"
+      "stock_price": 27.9999,
+      "change_ratio": 8.5688,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.ASML": {
-      "stock_price": 1747.58,
-      "change_ratio": -2.0892,
-      "update_time": "2026-07-17 20:05:07.807"
+      "stock_price": 1741.2,
+      "change_ratio": -0.3651,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.AVGO": {
-      "stock_price": 370.825,
-      "change_ratio": -0.9681,
-      "update_time": "2026-07-17 20:01:19.489"
+      "stock_price": 382.38,
+      "change_ratio": 3.116,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.BABA": {
-      "stock_price": 114.97,
-      "change_ratio": -2.1449,
-      "update_time": "2026-07-17 19:58:38.482"
+      "stock_price": 120.9909,
+      "change_ratio": 5.2369,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.BBAI": {
-      "stock_price": 2.84,
-      "change_ratio": -2.7397,
-      "update_time": "2026-07-17 20:01:09.617"
+      "stock_price": 2.81,
+      "change_ratio": -1.0563,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.BE": {
-      "stock_price": 214.96,
-      "change_ratio": 3.981,
-      "update_time": "2026-07-17 20:01:20.234"
+      "stock_price": 205.2,
+      "change_ratio": -4.5404,
+      "update_time": "2026-07-20 12:05:19"
     },
     "US.CBRS": {
-      "stock_price": 172.86,
-      "change_ratio": -4.2115,
-      "update_time": "2026-07-17 20:01:14.030"
+      "stock_price": 174.915,
+      "change_ratio": 1.1888,
+      "update_time": "2026-07-20 12:05:18"
     },
     "US.COHR": {
-      "stock_price": 277.6,
-      "change_ratio": 0.2311,
-      "update_time": "2026-07-17 20:01:04.988"
+      "stock_price": 295.155,
+      "change_ratio": 6.3238,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.COIN": {
-      "stock_price": 157.12,
-      "change_ratio": -2.0998,
-      "update_time": "2026-07-17 20:01:27.350"
+      "stock_price": 162.12,
+      "change_ratio": 3.1823,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.CRCL": {
-      "stock_price": 60.46,
-      "change_ratio": -0.2968,
-      "update_time": "2026-07-17 19:59:53.274"
+      "stock_price": 64.8795,
+      "change_ratio": 7.3098,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.CRM": {
-      "stock_price": 170.77,
-      "change_ratio": -1.1061,
-      "update_time": "2026-07-17 20:01:08.678"
+      "stock_price": 172.3,
+      "change_ratio": 0.8959,
+      "update_time": "2026-07-20 12:05:19"
     },
     "US.CRWD": {
-      "stock_price": 203.08,
-      "change_ratio": -0.3337,
-      "update_time": "2026-07-17 20:01:09.517"
+      "stock_price": 204.935,
+      "change_ratio": 0.9134,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.CRWV": {
-      "stock_price": 73.21,
-      "change_ratio": 0.4115,
-      "update_time": "2026-07-17 19:59:58.665"
+      "stock_price": 75.09,
+      "change_ratio": 2.568,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.DDOG": {
-      "stock_price": 258.69,
-      "change_ratio": -1.3838,
-      "update_time": "2026-07-17 20:01:10.734"
+      "stock_price": 268.7978,
+      "change_ratio": 3.9073,
+      "update_time": "2026-07-20 12:05:13"
     },
     "US.DELL": {
-      "stock_price": 396.34,
-      "change_ratio": 1.2673,
-      "update_time": "2026-07-17 20:01:34.402"
+      "stock_price": 389.005,
+      "change_ratio": -1.8507,
+      "update_time": "2026-07-20 12:05:14"
     },
     "US.DRAM": {
-      "stock_price": 52.72,
-      "change_ratio": 0.726,
-      "update_time": "2026-07-17 19:59:54.367"
+      "stock_price": 54.49,
+      "change_ratio": 3.3574,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.DUOL": {
-      "stock_price": 133.85,
-      "change_ratio": 3.808,
-      "update_time": "2026-07-17 20:01:25.044"
+      "stock_price": 136.29,
+      "change_ratio": 1.8229,
+      "update_time": "2026-07-20 12:05:19"
     },
     "US.EUV": {
-      "stock_price": 24.29,
-      "change_ratio": -1.4604,
-      "update_time": "2026-07-17 20:01:15.550"
+      "stock_price": 24.57,
+      "change_ratio": 1.1527,
+      "update_time": "2026-07-20 12:02:48"
     },
     "US.FIG": {
-      "stock_price": 23.95,
-      "change_ratio": 2.3067,
-      "update_time": "2026-07-17 20:01:19.005"
+      "stock_price": 24.46,
+      "change_ratio": 2.1294,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.FOTO": {
-      "stock_price": 19.37,
-      "change_ratio": 1.4667,
-      "update_time": "2026-07-17 20:01:16.171"
+      "stock_price": 19.7201,
+      "change_ratio": 1.8074,
+      "update_time": "2026-07-20 12:03:25"
     },
     "US.FUTU": {
-      "stock_price": 95.1,
-      "change_ratio": -2.4815,
-      "update_time": "2026-07-17 20:01:29.028"
+      "stock_price": 99.2105,
+      "change_ratio": 4.3223,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.GDS": {
-      "stock_price": 31.16,
-      "change_ratio": -4.855,
-      "update_time": "2026-07-17 20:01:30.374"
+      "stock_price": 32.73,
+      "change_ratio": 5.0385,
+      "update_time": "2026-07-20 12:05:05"
     },
     "US.GEV": {
-      "stock_price": 1057.84,
-      "change_ratio": 2.0864,
-      "update_time": "2026-07-17 20:01:03.367"
+      "stock_price": 1063.9075,
+      "change_ratio": 0.5736,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.GFS": {
-      "stock_price": 57.48,
-      "change_ratio": -1.3049,
-      "update_time": "2026-07-17 20:01:25.990"
+      "stock_price": 57.745,
+      "change_ratio": 0.461,
+      "update_time": "2026-07-20 12:05:04"
     },
     "US.GLW": {
-      "stock_price": 154.61,
-      "change_ratio": -2.3865,
-      "update_time": "2026-07-17 20:01:34.012"
+      "stock_price": 155.67,
+      "change_ratio": 0.6856,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.GOOGL": {
-      "stock_price": 346.77,
-      "change_ratio": -2.1695,
-      "update_time": "2026-07-17 20:01:27.361"
+      "stock_price": 355.99,
+      "change_ratio": 2.6588,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.HOOD": {
-      "stock_price": 99.96,
-      "change_ratio": -5.7159,
-      "update_time": "2026-07-17 19:59:55.831"
+      "stock_price": 101.05,
+      "change_ratio": 1.0904,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.HPE": {
-      "stock_price": 45.82,
-      "change_ratio": 1.5289,
-      "update_time": "2026-07-17 20:01:09.368"
+      "stock_price": 45.88,
+      "change_ratio": 0.1309,
+      "update_time": "2026-07-20 12:05:12"
     },
     "US.IBIT": {
-      "stock_price": 36.35,
-      "change_ratio": -0.1099,
-      "update_time": "2026-07-17 20:01:31.292"
+      "stock_price": 37.075,
+      "change_ratio": 1.9945,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.IBM": {
-      "stock_price": 212.67,
-      "change_ratio": -2.9126,
-      "update_time": "2026-07-17 20:01:26.208"
+      "stock_price": 213.61,
+      "change_ratio": 0.442,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.IGV": {
-      "stock_price": 92.8,
-      "change_ratio": -0.9605,
-      "update_time": "2026-07-17 20:01:34.136"
+      "stock_price": 93.555,
+      "change_ratio": 0.8136,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.INTC": {
-      "stock_price": 95.04,
-      "change_ratio": -2.0004,
-      "update_time": "2026-07-17 20:01:26.561"
+      "stock_price": 98.89,
+      "change_ratio": 4.0509,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.INTU": {
-      "stock_price": 291.09,
-      "change_ratio": -1.2551,
-      "update_time": "2026-07-17 20:01:25.456"
+      "stock_price": 290.69,
+      "change_ratio": -0.1374,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.IREN": {
-      "stock_price": 33.62,
-      "change_ratio": -3.474,
-      "update_time": "2026-07-17 20:01:14.825"
+      "stock_price": 39.95,
+      "change_ratio": 18.8281,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.IWM": {
-      "stock_price": 294.04,
-      "change_ratio": -0.5244,
-      "update_time": "2026-07-17 20:01:17.751"
+      "stock_price": 293.981,
+      "change_ratio": -0.0201,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.LITE": {
-      "stock_price": 732.82,
-      "change_ratio": 3.7651,
-      "update_time": "2026-07-17 20:01:31.518"
+      "stock_price": 789.5,
+      "change_ratio": 7.7345,
+      "update_time": "2026-07-20 12:05:19"
     },
     "US.MARA": {
-      "stock_price": 10.69,
-      "change_ratio": -6.3923,
-      "update_time": "2026-07-17 20:01:34.264"
+      "stock_price": 11.83,
+      "change_ratio": 10.6642,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.MDB": {
-      "stock_price": 312.33,
-      "change_ratio": -4.9513,
-      "update_time": "2026-07-17 20:01:28.352"
+      "stock_price": 329.44,
+      "change_ratio": 5.4782,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.META": {
-      "stock_price": 646.01,
-      "change_ratio": -2.7884,
-      "update_time": "2026-07-17 19:59:56.453"
+      "stock_price": 647.71,
+      "change_ratio": 0.2632,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.MRVL": {
-      "stock_price": 188.68,
-      "change_ratio": 0.2018,
-      "update_time": "2026-07-17 20:01:34.008"
+      "stock_price": 200.98,
+      "change_ratio": 6.519,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.MSFT": {
-      "stock_price": 393.82,
-      "change_ratio": -1.815,
-      "update_time": "2026-07-17 20:01:34.675"
+      "stock_price": 399.47,
+      "change_ratio": 1.4347,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.MSTR": {
-      "stock_price": 94.85,
-      "change_ratio": 0.8721,
-      "update_time": "2026-07-17 20:01:37.428"
+      "stock_price": 99.18,
+      "change_ratio": 4.5651,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.NBIS": {
-      "stock_price": 177.71,
-      "change_ratio": 3.4581,
-      "update_time": "2026-07-17 19:59:58.607"
+      "stock_price": 185.7,
+      "change_ratio": 4.4961,
+      "update_time": "2026-07-20 12:05:18"
     },
     "US.NET": {
-      "stock_price": 277.66,
-      "change_ratio": 1.9085,
-      "update_time": "2026-07-17 20:01:12.280"
+      "stock_price": 278.825,
+      "change_ratio": 0.4196,
+      "update_time": "2026-07-20 12:05:12"
     },
     "US.NOK": {
-      "stock_price": 10.12,
-      "change_ratio": -2.5048,
-      "update_time": "2026-07-17 20:01:09.635"
+      "stock_price": 10.195,
+      "change_ratio": 0.7411,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.NOW": {
-      "stock_price": 103.24,
-      "change_ratio": -0.7403,
-      "update_time": "2026-07-17 20:01:27.086"
+      "stock_price": 103.22,
+      "change_ratio": -0.0194,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.NVDA": {
-      "stock_price": 202.81,
-      "change_ratio": -2.2131,
-      "update_time": "2026-07-17 20:01:13.953"
+      "stock_price": 205.97,
+      "change_ratio": 1.5581,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.OKLO": {
-      "stock_price": 41.11,
-      "change_ratio": -1.4149,
-      "update_time": "2026-07-17 20:01:22.806"
+      "stock_price": 41.23,
+      "change_ratio": 0.2919,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.OPEN": {
-      "stock_price": 4.5,
-      "change_ratio": -1.5317,
-      "update_time": "2026-07-17 19:59:23.782"
+      "stock_price": 4.4669,
+      "change_ratio": -0.7356,
+      "update_time": "2026-07-20 12:05:16"
     },
     "US.ORCL": {
-      "stock_price": 126.41,
-      "change_ratio": 1.7712,
-      "update_time": "2026-07-17 20:01:13.091"
+      "stock_price": 122.1902,
+      "change_ratio": -3.3382,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.PANW": {
-      "stock_price": 358.68,
-      "change_ratio": 1.3249,
-      "update_time": "2026-07-17 20:01:19.528"
+      "stock_price": 359.55,
+      "change_ratio": 0.2426,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.PLTR": {
-      "stock_price": 132.38,
-      "change_ratio": -1.5323,
-      "update_time": "2026-07-17 20:01:17.195"
+      "stock_price": 134.39,
+      "change_ratio": 1.5184,
+      "update_time": "2026-07-20 12:05:22"
     },
     "US.QCOM": {
-      "stock_price": 171.78,
-      "change_ratio": 0.6858,
-      "update_time": "2026-07-17 20:01:19.241"
+      "stock_price": 173.39,
+      "change_ratio": 0.9372,
+      "update_time": "2026-07-20 12:05:18"
     },
     "US.RDDT": {
-      "stock_price": 181.18,
-      "change_ratio": -2.2023,
-      "update_time": "2026-07-17 20:01:30.672"
+      "stock_price": 186.34,
+      "change_ratio": 2.848,
+      "update_time": "2026-07-20 12:05:16"
     },
     "US.SAP": {
-      "stock_price": 159.04,
-      "change_ratio": -1.6085,
-      "update_time": "2026-07-17 20:01:05.206"
+      "stock_price": 158.65,
+      "change_ratio": -0.2452,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.SMCI": {
-      "stock_price": 24.18,
-      "change_ratio": -2.0259,
-      "update_time": "2026-07-17 19:59:58.358"
+      "stock_price": 24.3001,
+      "change_ratio": 0.4967,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.SNOW": {
-      "stock_price": 268.9,
-      "change_ratio": -0.4148,
-      "update_time": "2026-07-17 20:01:36.441"
+      "stock_price": 275.715,
+      "change_ratio": 2.5344,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.SOFI": {
-      "stock_price": 17.28,
-      "change_ratio": -0.2309,
-      "update_time": "2026-07-17 19:59:56.217"
+      "stock_price": 17.2201,
+      "change_ratio": -0.3466,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.SOUN": {
-      "stock_price": 6.27,
-      "change_ratio": -0.6339,
-      "update_time": "2026-07-17 20:01:04.824"
+      "stock_price": 6.36,
+      "change_ratio": 1.4354,
+      "update_time": "2026-07-20 12:05:24"
     },
     "US.TEAM": {
-      "stock_price": 93.29,
-      "change_ratio": 1.0069,
-      "update_time": "2026-07-17 19:59:59.519"
+      "stock_price": 94.315,
+      "change_ratio": 1.0987,
+      "update_time": "2026-07-20 12:04:56"
     },
     "US.TSLA": {
-      "stock_price": 380.84,
-      "change_ratio": -2.6134,
-      "update_time": "2026-07-17 20:01:07.275"
+      "stock_price": 374.16,
+      "change_ratio": -1.754,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.TSM": {
-      "stock_price": 398.37,
-      "change_ratio": -2.7749,
-      "update_time": "2026-07-17 20:01:25.754"
+      "stock_price": 404.87,
+      "change_ratio": 1.6316,
+      "update_time": "2026-07-20 12:05:25"
     },
     "US.TWLO": {
-      "stock_price": 206.78,
-      "change_ratio": 0.0387,
-      "update_time": "2026-07-17 20:01:26.763"
+      "stock_price": 212.56,
+      "change_ratio": 2.7952,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.UPST": {
-      "stock_price": 29.51,
-      "change_ratio": -4.4365,
-      "update_time": "2026-07-17 20:01:17.161"
+      "stock_price": 29.05,
+      "change_ratio": -1.5588,
+      "update_time": "2026-07-20 12:05:21"
     },
     "US.UVXY": {
-      "stock_price": 25.44,
-      "change_ratio": 8.8109,
-      "update_time": "2026-07-17 20:01:03.616"
+      "stock_price": 23.84,
+      "change_ratio": -6.2893,
+      "update_time": "2026-07-20 12:05:23"
     },
     "US.VST": {
-      "stock_price": 155.44,
-      "change_ratio": 1.8878,
-      "update_time": "2026-07-17 20:01:10.004"
+      "stock_price": 157.12,
+      "change_ratio": 1.0808,
+      "update_time": "2026-07-20 12:04:59"
     },
     "US.YINN": {
-      "stock_price": 26.79,
-      "change_ratio": -3.355,
-      "update_time": "2026-07-17 20:01:06.131"
+      "stock_price": 29.42,
+      "change_ratio": 9.8171,
+      "update_time": "2026-07-20 12:05:20"
     }
   }
 }
