@@ -1,10 +1,10 @@
 {
-  "snapshot_time": "2026-07-21 20:08:04",
-  "snapshot_type": "complete",
-  "trade_date": "2026-07-20",
-  "snapshot_date": "2026-07-20",
-  "as_of_et": "2026-07-21 08:08:04 ET",
-  "as_of_bjt": "2026-07-21 20:08:04 BJT",
+  "snapshot_time": "2026-07-22 00:33:10",
+  "snapshot_type": "intraday",
+  "trade_date": "2026-07-21",
+  "snapshot_date": "2026-07-21",
+  "as_of_et": "2026-07-21 12:33:10 ET",
+  "as_of_bjt": "2026-07-22 00:33:10 BJT",
   "collection_scope": {
     "watchlist_source": "dashboard_config",
     "dashboard_config_symbol_count": 70,
@@ -27,12 +27,12 @@
     "option_rank_turnover_symbol_count": 70,
     "option_rank_volume_rows": 700,
     "option_rank_volume_symbol_count": 70,
-    "option_event_all_count": 546,
-    "option_event_pages": 2,
-    "option_event_rows_received": 546,
-    "option_event_exact_duplicates_removed": 4,
-    "option_event_rows_stored": 542,
-    "option_event_neutral_records_kept": 32,
+    "option_event_all_count": 253,
+    "option_event_pages": 1,
+    "option_event_rows_received": 253,
+    "option_event_exact_duplicates_removed": 0,
+    "option_event_rows_stored": 253,
+    "option_event_neutral_records_kept": 21,
     "option_overview_symbol_count": 70
   }
 }
